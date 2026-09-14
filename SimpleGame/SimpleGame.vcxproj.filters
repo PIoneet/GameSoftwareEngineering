@@ -48,6 +48,12 @@
     <ClInclude Include="Font.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="Model.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Stats.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -74,6 +80,12 @@
     <ClCompile Include="Font.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="Model.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Stats.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Shaders\Sprite.fs">
@@ -98,6 +110,18 @@
       <Filter>소스 파일\Shaders</Filter>
     </None>
     <None Include="Shaders\Composite.fs">
+      <Filter>소스 파일\Shaders</Filter>
+    </None>
+    <None Include="Shaders\Water.vs">
+      <Filter>소스 파일\Shaders</Filter>
+    </None>
+    <None Include="Shaders\Water.fs">
+      <Filter>소스 파일\Shaders</Filter>
+    </None>
+    <None Include="Shaders\Flame.vs">
+      <Filter>소스 파일\Shaders</Filter>
+    </None>
+    <None Include="Shaders\Flame.fs">
       <Filter>소스 파일\Shaders</Filter>
     </None>
   </ItemGroup>

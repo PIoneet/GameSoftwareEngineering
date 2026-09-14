@@ -12,14 +12,14 @@ Renderer::~Renderer()
 {
 	DestroyTargets();
 
-	if (m_VBOQuad)     glDeleteBuffers(1, &m_VBOQuad);
-	if (m_VBODiamond)  glDeleteBuffers(1, &m_VBODiamond);
+	if (m_VBOQuad)    glDeleteBuffers(1, &m_VBOQuad);
+	if (m_VBODiamond) glDeleteBuffers(1, &m_VBODiamond);
 
-	if (m_SpriteProg)  glDeleteProgram(m_SpriteProg);
-	if (m_TexProg)     glDeleteProgram(m_TexProg);
-	if (m_BrightProg)  glDeleteProgram(m_BrightProg);
-	if (m_BlurProg)    glDeleteProgram(m_BlurProg);
-	if (m_CompProg)    glDeleteProgram(m_CompProg);
+	if (m_SpriteProg) glDeleteProgram(m_SpriteProg);
+	if (m_TexProg)    glDeleteProgram(m_TexProg);
+	if (m_BrightProg) glDeleteProgram(m_BrightProg);
+	if (m_BlurProg)   glDeleteProgram(m_BlurProg);
+	if (m_CompProg)   glDeleteProgram(m_CompProg);
 
 	m_FontSmall.Destroy();
 	m_FontBody.Destroy();
@@ -39,6 +39,8 @@ void Renderer::Initialize(int windowSizeX, int windowSizeY)
 
 	CreateVertexBufferObjects();
 
+	// uniform / attribute 위치는 여기서 한 번만 조회한다.
+	// 드로우 콜마다 조회하면 오브젝트가 늘어날수록 비용이 쌓인다.
 	if (m_SpriteProg && m_TexProg && m_BrightProg && m_BlurProg && m_CompProg &&
 	    m_VBOQuad && m_VBODiamond)
 	{
@@ -75,8 +77,10 @@ void Renderer::Initialize(int windowSizeX, int windowSizeY)
 	// 한글 폰트. Malgun Gothic 이 없으면 GDI 가 HANGEUL_CHARSET 기준으로 대체한다.
 	if (!m_FontSmall.Create(L"Malgun Gothic", 14, false))
 		m_FontSmall.Create(L"Gulim", 14, false);
+
 	if (!m_FontBody.Create(L"Malgun Gothic", 17, false))
 		m_FontBody.Create(L"Gulim", 17, false);
+
 	if (!m_FontTitle.Create(L"Malgun Gothic", 25, true))
 		m_FontTitle.Create(L"Gulim", 25, true);
 
@@ -84,7 +88,9 @@ void Renderer::Initialize(int windowSizeX, int windowSizeY)
 
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glDisable(GL_DEPTH_TEST);   // 깊이는 그리기 순서(painter's algorithm)로 해결한다.
+
+	// 깊이는 그리기 순서(painter's algorithm)로 해결한다.
+	glDisable(GL_DEPTH_TEST);
 }
 
 bool Renderer::IsInitialized() const
@@ -92,21 +98,26 @@ bool Renderer::IsInitialized() const
 	return m_Initialized;
 }
 
+
 // ─────────────────────────────────────────────────────────────────────────
 //  렌더 타깃
 // ─────────────────────────────────────────────────────────────────────────
+
 static GLuint MakeColorTarget(int w, int h, GLuint* fboOut)
 {
 	GLuint tex = 0;
+
 	glGenTextures(1, &tex);
 	glBindTexture(GL_TEXTURE_2D, tex);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 	GLuint fbo = 0;
+
 	glGenFramebuffers(1, &fbo);
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
@@ -118,11 +129,13 @@ static GLuint MakeColorTarget(int w, int h, GLuint* fboOut)
 	{
 		glDeleteFramebuffers(1, &fbo);
 		glDeleteTextures(1, &tex);
+
 		*fboOut = 0;
 		return 0;
 	}
 
 	*fboOut = fbo;
+
 	return tex;
 }
 
@@ -137,6 +150,7 @@ bool Renderer::CreateTargets(int w, int h)
 	m_HalfH = h / 2; if (m_HalfH < 1) m_HalfH = 1;
 
 	m_SceneTex = MakeColorTarget(w, h, &m_SceneFBO);
+
 	if (m_SceneTex == 0)
 		return false;
 
@@ -144,6 +158,7 @@ bool Renderer::CreateTargets(int w, int h)
 	for (int i = 0; i < 2; ++i)
 	{
 		m_BloomTex[i] = MakeColorTarget(m_HalfW, m_HalfH, &m_BloomFBO[i]);
+
 		if (m_BloomTex[i] == 0)
 			return false;
 	}
@@ -167,12 +182,15 @@ void Renderer::Resize(int windowSizeX, int windowSizeY)
 {
 	m_WindowSizeX = (float)windowSizeX;
 	m_WindowSizeY = (float)windowSizeY;
-	m_TargetsOK   = CreateTargets(windowSizeX, windowSizeY);
+
+	m_TargetsOK = CreateTargets(windowSizeX, windowSizeY);
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────
 //  셰이더 / VBO
 // ─────────────────────────────────────────────────────────────────────────
+
 void Renderer::CreateVertexBufferObjects()
 {
 	float quad[] =
@@ -200,29 +218,34 @@ void Renderer::CreateVertexBufferObjects()
 void Renderer::AddShader(GLuint shaderProgram, const char* shaderText, GLenum shaderType)
 {
 	GLuint shaderObj = glCreateShader(shaderType);
+
 	if (shaderObj == 0)
 	{
 		std::cout << "Error creating shader type " << shaderType << "\n";
 		return;
 	}
 
-	const GLchar* p[1] = { shaderText };
-	GLint lengths[1]   = { (GLint)strlen(shaderText) };
+	const GLchar* p[1]     = { shaderText };
+	GLint         lengths[1] = { (GLint)strlen(shaderText) };
 
 	glShaderSource(shaderObj, 1, p, lengths);
 	glCompileShader(shaderObj);
 
 	GLint success = 0;
 	glGetShaderiv(shaderObj, GL_COMPILE_STATUS, &success);
+
 	if (!success)
 	{
 		GLchar infoLog[1024] = { 0 };
 		glGetShaderInfoLog(shaderObj, sizeof(infoLog), NULL, infoLog);
+
 		std::cout << "Error compiling shader type " << shaderType << ": " << infoLog << "\n";
 	}
 
 	glAttachShader(shaderProgram, shaderObj);
-	glDeleteShader(shaderObj);   // 링크 후에는 프로그램이 참조를 갖는다
+
+	// 링크 후에는 프로그램이 참조를 갖는다. 여기서 지워야 셰이더 오브젝트가 남지 않는다.
+	glDeleteShader(shaderObj);
 }
 
 bool Renderer::ReadShaderFile(const char* filename, std::string* target)
@@ -238,28 +261,32 @@ bool Renderer::ReadShaderFile(const char* filename, std::string* target)
 
 	for (int i = 0; i < 4; ++i)
 	{
-		std::string path = std::string(prefixes[i]) + filename;
-
+		std::string   path = std::string(prefixes[i]) + filename;
 		std::ifstream file(path.c_str());
+
 		if (file.fail())
 			continue;
 
 		std::string line;
+
 		while (getline(file, line))
 		{
 			target->append(line);
 			target->append("\n");
 		}
+
 		return true;
 	}
 
 	std::cout << "Shader file not found: " << filename << "\n";
+
 	return false;
 }
 
 GLuint Renderer::CompileShaders(const char* filenameVS, const char* filenameFS)
 {
 	GLuint shaderProgram = glCreateProgram();
+
 	if (shaderProgram == 0)
 	{
 		std::cout << "Error creating shader program\n";
@@ -267,35 +294,54 @@ GLuint Renderer::CompileShaders(const char* filenameVS, const char* filenameFS)
 	}
 
 	std::string vs, fs;
+
+	// 실패는 0 을 돌려준다. GLuint 에 -1 을 넣으면 거대한 양수가 되어 성공으로 오인된다.
 	if (!ReadShaderFile(filenameVS, &vs) || !ReadShaderFile(filenameFS, &fs))
 	{
 		glDeleteProgram(shaderProgram);
-		return 0;   // 실패는 0. GLuint 에 -1 을 넣으면 거대한 양수가 되어 성공으로 오인된다.
+		return 0;
 	}
 
 	AddShader(shaderProgram, vs.c_str(), GL_VERTEX_SHADER);
 	AddShader(shaderProgram, fs.c_str(), GL_FRAGMENT_SHADER);
 
-	GLint success = 0;
+	GLint  success       = 0;
 	GLchar errorLog[1024] = { 0 };
 
 	glLinkProgram(shaderProgram);
 	glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+
 	if (success == 0)
 	{
 		glGetProgramInfoLog(shaderProgram, sizeof(errorLog), NULL, errorLog);
 		std::cout << filenameVS << ", " << filenameFS << " link error\n" << errorLog << "\n";
+
+		glDeleteProgram(shaderProgram);
+		return 0;
+	}
+
+	glValidateProgram(shaderProgram);
+	glGetProgramiv(shaderProgram, GL_VALIDATE_STATUS, &success);
+
+	if (!success)
+	{
+		glGetProgramInfoLog(shaderProgram, sizeof(errorLog), NULL, errorLog);
+		std::cout << filenameVS << ", " << filenameFS << " validate error\n" << errorLog << "\n";
+
 		glDeleteProgram(shaderProgram);
 		return 0;
 	}
 
 	std::cout << filenameVS << ", " << filenameFS << " compiled.\n";
+
 	return shaderProgram;
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────
 //  프레임 흐름
 // ─────────────────────────────────────────────────────────────────────────
+
 void Renderer::BeginScene(float r, float g, float b)
 {
 	if (m_TargetsOK)
@@ -317,7 +363,9 @@ void Renderer::DrawFullscreen(GLint attribLocation)
 	glEnableVertexAttribArray(attribLocation);
 	glBindBuffer(GL_ARRAY_BUFFER, m_VBOQuad);
 	glVertexAttribPointer(attribLocation, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, 0);
+
 	glDrawArrays(GL_TRIANGLES, 0, 6);
+
 	glDisableVertexAttribArray(attribLocation);
 }
 
@@ -329,34 +377,41 @@ void Renderer::PostProcess(float dread, float time)
 	// 사후처리는 덮어쓰기다. 블렌딩이 켜져 있으면 결과가 섞인다.
 	glDisable(GL_BLEND);
 
-	// 1) 밝은 부분만 뽑아낸다
+	// ── 1) 밝은 부분만 뽑아낸다 ──
 	glBindFramebuffer(GL_FRAMEBUFFER, m_BloomFBO[0]);
 	glViewport(0, 0, m_HalfW, m_HalfH);
+
 	glUseProgram(m_BrightProg);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, m_SceneTex);
 	glUniform1i(m_BrightUniScene, 0);
 	glUniform1f(m_BrightUniThr, 0.58f);
+
 	DrawFullscreen(m_BrightAttribPos);
 
-	// 2) 가로 블러
+	// ── 2) 가로 블러 ──
 	glBindFramebuffer(GL_FRAMEBUFFER, m_BloomFBO[1]);
+
 	glUseProgram(m_BlurProg);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, m_BloomTex[0]);
 	glUniform1i(m_BlurUniTex, 0);
 	glUniform2f(m_BlurUniDir, 1.0f / (float)m_HalfW, 0.0f);
+
 	DrawFullscreen(m_BlurAttribPos);
 
-	// 3) 세로 블러
+	// ── 3) 세로 블러 ──
 	glBindFramebuffer(GL_FRAMEBUFFER, m_BloomFBO[0]);
+
 	glBindTexture(GL_TEXTURE_2D, m_BloomTex[1]);
 	glUniform2f(m_BlurUniDir, 0.0f, 1.0f / (float)m_HalfH);
+
 	DrawFullscreen(m_BlurAttribPos);
 
-	// 4) 합성 → 백버퍼
+	// ── 4) 합성 → 백버퍼 ──
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glViewport(0, 0, (int)m_WindowSizeX, (int)m_WindowSizeY);
+
 	glUseProgram(m_CompProg);
 
 	glActiveTexture(GL_TEXTURE0);
@@ -370,15 +425,18 @@ void Renderer::PostProcess(float dread, float time)
 	glUniform2f(m_CompUniRes, m_WindowSizeX, m_WindowSizeY);
 	glUniform1f(m_CompUniDread, dread);
 	glUniform1f(m_CompUniTime, time);
+
 	DrawFullscreen(m_CompAttribPos);
 
 	glActiveTexture(GL_TEXTURE0);
 	glEnable(GL_BLEND);
 }
 
+
 // ─────────────────────────────────────────────────────────────────────────
 //  도형
 // ─────────────────────────────────────────────────────────────────────────
+
 void Renderer::DrawUnitShape(GLuint vbo, float x, float y, float w, float h,
                              float r, float g, float b, float a)
 {
@@ -412,9 +470,11 @@ void Renderer::DrawDiamond(float cx, float cy, float w, float h,
 	DrawUnitShape(m_VBODiamond, cx - w * 0.5f, cy - h * 0.5f, w, h, r, g, b, a);
 }
 
+
 // ─────────────────────────────────────────────────────────────────────────
 //  텍스트
 // ─────────────────────────────────────────────────────────────────────────
+
 Font& Renderer::FontFor(TextFont font)
 {
 	switch (font)
@@ -433,6 +493,7 @@ void Renderer::DrawString(float x, float y, const wchar_t* text,
 		return;
 
 	Font& f = FontFor(font);
+
 	if (f.Texture() == 0)
 		return;
 
@@ -459,6 +520,7 @@ void Renderer::DrawString(float x, float y, const wchar_t* text,
 	for (const wchar_t* p = text; *p != L'\0'; ++p)
 	{
 		const Glyph* g = f.Get(*p);
+
 		if (g == 0)
 			continue;
 
@@ -466,8 +528,10 @@ void Renderer::DrawString(float x, float y, const wchar_t* text,
 		{
 			glUniform4f(m_TexUniRect, penX, top, (float)g->w, (float)g->h);
 			glUniform4f(m_TexUniUV, g->u0, g->v0, g->u1, g->v1);
+
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}
+
 		penX += (float)g->advance;
 	}
 

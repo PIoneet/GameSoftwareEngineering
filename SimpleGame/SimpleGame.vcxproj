@@ -164,7 +164,9 @@
     <ClInclude Include="Game.h" />
     <ClInclude Include="Input.h" />
     <ClInclude Include="IsoMath.h" />
+    <ClInclude Include="Model.h" />
     <ClInclude Include="Renderer.h" />
+    <ClInclude Include="Stats.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="World.h" />
@@ -174,8 +176,10 @@
     <ClCompile Include="Font.cpp" />
     <ClCompile Include="Game.cpp" />
     <ClCompile Include="Input.cpp" />
+    <ClCompile Include="Model.cpp" />
     <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="SimpleGame.cpp" />
+    <ClCompile Include="Stats.cpp" />
     <ClCompile Include="World.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
@@ -188,11 +192,15 @@
     <None Include="Shaders\Blur.fs" />
     <None Include="Shaders\Bright.fs" />
     <None Include="Shaders\Composite.fs" />
+    <None Include="Shaders\Flame.fs" />
+    <None Include="Shaders\Flame.vs" />
     <None Include="Shaders\Post.vs" />
     <None Include="Shaders\Sprite.fs" />
     <None Include="Shaders\Sprite.vs" />
     <None Include="Shaders\Textured.fs" />
     <None Include="Shaders\Textured.vs" />
+    <None Include="Shaders\Water.fs" />
+    <None Include="Shaders\Water.vs" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

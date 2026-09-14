@@ -13,10 +13,16 @@ static const float LAKE_RY = 18.0f;
 static const float TOWN_X0 = 25.0f, TOWN_X1 = 58.0f;
 static const float TOWN_Y0 = 25.0f, TOWN_Y1 = 64.0f;
 
+static int ClampInt(int v, int lo, int hi)
+{
+	return v < lo ? lo : (v > hi ? hi : v);
+}
+
 static float Hash01(int x, int y)
 {
 	unsigned int h = (unsigned int)(x * 374761393) + (unsigned int)(y * 668265263);
 	h = (h ^ (h >> 13)) * 1274126177u;
+
 	return (float)((h ^ (h >> 16)) & 0xFFFFu) / 65535.0f;
 }
 
@@ -42,13 +48,16 @@ static float SmoothNoise(float x, float y)
 float World::Rand01()
 {
 	m_Rng = m_Rng * 1664525u + 1013904223u;
+
 	return (float)((m_Rng >> 8) & 0xFFFFFFu) / 16777216.0f;
 }
 
 TileType World::Tile(int x, int y) const
 {
+	// 맵 밖은 통행 불가로 취급한다.
 	if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H)
-		return TILE_WATER;   // 맵 밖은 통행 불가로 취급
+		return TILE_WATER;
+
 	return m_Tiles[y][x];
 }
 
@@ -56,6 +65,7 @@ float World::Variation(int x, int y) const
 {
 	if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H)
 		return 0.5f;
+
 	return m_Variation[y][x];
 }
 
@@ -63,6 +73,7 @@ void World::Add(ObjectType type, float x, float y,
                 float halfW, float halfH, float width, float height, bool blocking)
 {
 	WorldObject o;
+
 	o.type     = type;
 	o.x        = x;
 	o.y        = y;
@@ -72,18 +83,26 @@ void World::Add(ObjectType type, float x, float y,
 	o.height   = height;
 	o.blocking = blocking;
 	o.variant  = (int)(Rand01() * 1000.0f);
+
 	m_Objects.push_back(o);
 }
+
+
+// ─────────────────────────────────────────────────────────────────────────
+//  지형 생성
+// ─────────────────────────────────────────────────────────────────────────
 
 void World::CarvePath(float ax, float ay, float bx, float by, float radius)
 {
 	float dx  = bx - ax;
 	float dy  = by - ay;
 	float len = sqrtf(dx * dx + dy * dy);
+
 	if (len < 0.001f)
 		return;
 
 	int steps = (int)(len * 4.0f);
+
 	for (int s = 0; s <= steps; ++s)
 	{
 		float t  = (float)s / (float)steps;
@@ -107,8 +126,9 @@ void World::CarvePath(float ax, float ay, float bx, float by, float radius)
 			float ddy = ((float)ty + 0.5f) - py;
 			float d   = sqrtf(ddx * ddx + ddy * ddy);
 
+			// 나무 배제용 여유 폭 — 길보다 넓게 잡는다.
 			if (d < r + 1.5f)
-				m_NearPath[ty][tx] = true;      // 나무 배제용 여유 폭
+				m_NearPath[ty][tx] = true;
 
 			if (d < r && m_Tiles[ty][tx] != TILE_WATER && m_Tiles[ty][tx] != TILE_SHALLOW)
 				m_Tiles[ty][tx] = TILE_PATH;
@@ -129,6 +149,7 @@ void World::ForceSand(float cx, float cy, float radius)
 
 		float ddx = ((float)tx + 0.5f) - cx;
 		float ddy = ((float)ty + 0.5f) - cy;
+
 		if (ddx * ddx + ddy * ddy > radius * radius)
 			continue;
 
@@ -140,6 +161,7 @@ void World::Generate()
 {
 	m_Rng = 0x5EED1234u;
 	m_Objects.clear();
+
 	for (int i = 0; i < GRID_W * GRID_H; ++i)
 		m_Grid[i].clear();
 
@@ -148,6 +170,7 @@ void World::Generate()
 	for (int x = 0; x < MAP_W; ++x)
 	{
 		float n = SmoothNoise((float)x * 0.09f, (float)y * 0.09f);
+
 		m_Tiles[y][x]     = (n > 0.57f) ? TILE_MEADOW : TILE_GRASS;
 		m_Variation[y][x] = Hash01(x, y);
 		m_NearPath[y][x]  = false;
@@ -174,6 +197,7 @@ void World::Generate()
 	CarvePath(VILLAGE_CX, VILLAGE_CY, 30.0f, 56.0f, 1.2f);         // 밭
 	CarvePath(VILLAGE_CX, VILLAGE_CY, 60.0f, 32.0f, 1.1f);         // 동쪽 들길
 
+	// 비석이 설 자리는 마른 모래로 만들어 둔다.
 	ForceSand(SIGIL_X, SIGIL_Y, 3.4f);
 
 	// ── 4) 배치 ─────────────────────────────────────────────────────
@@ -181,12 +205,18 @@ void World::Generate()
 	PlaceFarm();
 	PlaceShore();
 	PlaceForest();
+
 	BuildGrid();
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────
+//  배치
+// ─────────────────────────────────────────────────────────────────────────
+
 void World::PlaceVillage()
 {
-	// 여관 — 마을에서 가장 큰 건물
+	// 여관과 예배당 — 마을에서 가장 큰 건물 둘
 	Add(OBJ_INN,    34.0f, 34.0f, 2.1f, 2.1f, 168.0f, 136.0f, true);
 	Add(OBJ_CHAPEL, 36.0f, 27.5f, 1.9f, 1.9f, 140.0f, 158.0f, true);
 
@@ -200,7 +230,7 @@ void World::PlaceVillage()
 	Add(OBJ_HOUSE, 38.5f, 50.5f, 1.6f, 1.6f, 116.0f, 100.0f, true);
 	Add(OBJ_HOUSE, 50.5f, 52.0f, 1.5f, 1.5f, 114.0f,  98.0f, true);
 
-	// 광장
+	// 광장 시설물
 	Add(OBJ_WELL,     44.0f, 36.0f, 0.8f, 0.8f, 54.0f, 50.0f, true);
 	Add(OBJ_BOARD,    36.2f, 43.2f, 0.5f, 0.4f, 48.0f, 56.0f, true);
 	Add(OBJ_CAMPFIRE, 41.0f, 43.0f, 0.7f, 0.7f, 46.0f, 40.0f, true);
@@ -210,14 +240,16 @@ void World::PlaceVillage()
 	Add(OBJ_LANTERN, 52.0f, 54.5f, 0.35f, 0.35f, 26.0f, 62.0f, true);
 	Add(OBJ_LANTERN, 38.0f, 34.5f, 0.35f, 0.35f, 26.0f, 62.0f, true);
 
-	// 마을 안 나무 — 완전히 휑하지 않게
+	// 마을 안 나무와 덤불 — 완전히 휑하지 않게
 	Add(OBJ_TREE, 30.0f, 30.0f, 0.4f, 0.4f, 54.0f, 108.0f, true);
 	Add(OBJ_TREE, 50.5f, 30.5f, 0.4f, 0.4f, 50.0f, 100.0f, true);
 	Add(OBJ_TREE, 35.0f, 54.0f, 0.4f, 0.4f, 56.0f, 112.0f, true);
 	Add(OBJ_TREE, 54.5f, 47.0f, 0.4f, 0.4f, 48.0f,  96.0f, true);
-	Add(OBJ_BUSH, 42.5f, 31.0f, 0.4f, 0.4f, 38.0f,  30.0f, true);
-	Add(OBJ_BUSH, 31.5f, 43.0f, 0.4f, 0.4f, 36.0f,  28.0f, true);
 
+	Add(OBJ_BUSH, 42.5f, 31.0f, 0.4f, 0.4f, 38.0f, 30.0f, true);
+	Add(OBJ_BUSH, 31.5f, 43.0f, 0.4f, 0.4f, 36.0f, 28.0f, true);
+
+	// 잡동사니
 	Add(OBJ_CRATE, 45.0f, 34.5f, 0.4f, 0.4f, 32.0f, 28.0f, true);
 	Add(OBJ_CRATE, 35.2f, 36.0f, 0.4f, 0.4f, 30.0f, 26.0f, true);
 	Add(OBJ_CRATE, 48.5f, 44.0f, 0.4f, 0.4f, 30.0f, 26.0f, true);
@@ -232,10 +264,13 @@ void World::PlaceFarm()
 	for (float x = x0; x <= x1; x += 1.0f)
 	{
 		bool gate = (x > 29.0f && x < 31.5f);
+
 		if (!gate)
 			Add(OBJ_FENCE, x, y0, 0.45f, 0.35f, 30.0f, 26.0f, true);
+
 		Add(OBJ_FENCE, x, y1, 0.45f, 0.35f, 30.0f, 26.0f, true);
 	}
+
 	for (float y = y0 + 1.0f; y < y1; y += 1.0f)
 	{
 		Add(OBJ_FENCE, x0, y, 0.35f, 0.45f, 30.0f, 26.0f, true);
@@ -251,8 +286,9 @@ void World::PlaceShore()
 	// 비석 — 이 프로토타입의 목적지
 	Add(OBJ_SIGIL, SIGIL_X, SIGIL_Y, 0.5f, 0.5f, 48.0f, 58.0f, true);
 
-	Add(OBJ_CRATE, 60.4f, 64.0f, 0.4f, 0.4f, 32.0f, 28.0f, true);
-	Add(OBJ_CRATE, 65.6f, 69.0f, 0.4f, 0.4f, 30.0f, 26.0f, true);
+	// 어부가 두고 간 것들
+	Add(OBJ_CRATE, 60.4f, 64.0f, 0.4f, 0.4f,  32.0f, 28.0f, true);
+	Add(OBJ_CRATE, 65.6f, 69.0f, 0.4f, 0.4f,  30.0f, 26.0f, true);
 	Add(OBJ_ROCK,  59.0f, 69.5f, 0.4f, 0.35f, 36.0f, 22.0f, true);
 	Add(OBJ_ROCK,  66.5f, 64.5f, 0.4f, 0.35f, 32.0f, 20.0f, true);
 
@@ -262,6 +298,7 @@ void World::PlaceShore()
 	{
 		if (m_Tiles[y][x] != TILE_SHALLOW)
 			continue;
+
 		if (Rand01() > 0.14f)
 			continue;
 
@@ -276,14 +313,17 @@ void World::PlaceForest()
 	for (int x = 0; x < MAP_W; ++x)
 	{
 		TileType t = m_Tiles[y][x];
+
 		if (t == TILE_WATER || t == TILE_SHALLOW || t == TILE_SAND || t == TILE_PATH)
 			continue;
+
 		if (m_NearPath[y][x])
 			continue;
 
 		float fx = (float)x + 0.5f;
 		float fy = (float)y + 0.5f;
 
+		// 마을과 밭은 비워 둔다.
 		if (fx > TOWN_X0 && fx < TOWN_X1 && fy > TOWN_Y0 && fy < TOWN_Y1)
 			continue;
 
@@ -299,13 +339,17 @@ void World::PlaceForest()
 
 		// 안쪽에는 뭉친 군락
 		float clump = SmoothNoise((float)x * 0.075f + 31.0f, (float)y * 0.075f + 17.0f);
+
 		if (clump > 0.60f)
 		{
 			float c = (clump - 0.60f) * 2.4f;
-			if (c > density) density = c;
+
+			if (c > density)
+				density = c;
 		}
 
 		float roll = Rand01();
+
 		if (roll >= density * 0.80f)
 		{
 			// 나무가 안 서는 자리에는 가끔 덤불이나 그루터기
@@ -316,6 +360,7 @@ void World::PlaceForest()
 				else
 					Add(OBJ_STUMP, fx, fy, 0.38f, 0.38f, 32.0f, 20.0f, true);
 			}
+
 			continue;
 		}
 
@@ -336,8 +381,10 @@ void World::PlaceForest()
 	for (int x = 0; x < MAP_W; ++x)
 	{
 		TileType t = m_Tiles[y][x];
+
 		if (t != TILE_GRASS && t != TILE_MEADOW && t != TILE_SAND)
 			continue;
+
 		if (m_NearPath[y][x] || Rand01() > 0.006f)
 			continue;
 
@@ -346,26 +393,27 @@ void World::PlaceForest()
 	}
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────
+//  충돌
+// ─────────────────────────────────────────────────────────────────────────
+
 void World::BuildGrid()
 {
 	for (size_t i = 0; i < m_Objects.size(); ++i)
 	{
 		const WorldObject& o = m_Objects[i];
+
 		if (!o.blocking)
 			continue;
 
 		// 조회 반경(최대 1타일)을 미리 얹어 셀 경계에서 놓치는 일이 없게 한다.
-		float pad = 1.0f;
+		const float pad = 1.0f;
 
-		int cx0 = (int)floorf((o.x - o.halfW - pad) / (float)GRID_CELL);
-		int cx1 = (int)floorf((o.x + o.halfW + pad) / (float)GRID_CELL);
-		int cy0 = (int)floorf((o.y - o.halfH - pad) / (float)GRID_CELL);
-		int cy1 = (int)floorf((o.y + o.halfH + pad) / (float)GRID_CELL);
-
-		if (cx0 < 0) cx0 = 0;
-		if (cy0 < 0) cy0 = 0;
-		if (cx1 >= GRID_W) cx1 = GRID_W - 1;
-		if (cy1 >= GRID_H) cy1 = GRID_H - 1;
+		int cx0 = ClampInt((int)floorf((o.x - o.halfW - pad) / (float)GRID_CELL), 0, GRID_W - 1);
+		int cx1 = ClampInt((int)floorf((o.x + o.halfW + pad) / (float)GRID_CELL), 0, GRID_W - 1);
+		int cy0 = ClampInt((int)floorf((o.y - o.halfH - pad) / (float)GRID_CELL), 0, GRID_H - 1);
+		int cy1 = ClampInt((int)floorf((o.y + o.halfH + pad) / (float)GRID_CELL), 0, GRID_H - 1);
 
 		for (int cy = cy0; cy <= cy1; ++cy)
 		for (int cx = cx0; cx <= cx1; ++cx)
@@ -390,15 +438,15 @@ bool World::Blocked(float x, float y, float radius) const
 	}
 
 	// 오브젝트 — 자기가 속한 격자 셀만 본다.
-	int cx = (int)floorf(x / (float)GRID_CELL);
-	int cy = (int)floorf(y / (float)GRID_CELL);
-	if (cx < 0) cx = 0; else if (cx >= GRID_W) cx = GRID_W - 1;
-	if (cy < 0) cy = 0; else if (cy >= GRID_H) cy = GRID_H - 1;
+	int cx = ClampInt((int)floorf(x / (float)GRID_CELL), 0, GRID_W - 1);
+	int cy = ClampInt((int)floorf(y / (float)GRID_CELL), 0, GRID_H - 1);
 
 	const std::vector<int>& cell = m_Grid[cy * GRID_W + cx];
+
 	for (size_t i = 0; i < cell.size(); ++i)
 	{
 		const WorldObject& o = m_Objects[cell[i]];
+
 		if (fabsf(x - o.x) < o.halfW + radius &&
 		    fabsf(y - o.y) < o.halfH + radius)
 			return true;
@@ -409,10 +457,8 @@ bool World::Blocked(float x, float y, float radius) const
 
 bool World::IsOpenGround(float x, float y) const
 {
-	int tx = (int)floorf(x);
-	int ty = (int)floorf(y);
+	TileType t = Tile((int)floorf(x), (int)floorf(y));
 
-	TileType t = Tile(tx, ty);
 	if (t != TILE_GRASS && t != TILE_MEADOW)
 		return false;
 
