@@ -14,76 +14,111 @@ but WITHOUT ANY WARRANTY.
 #include "Dependencies\freeglut.h"
 
 #include "Renderer.h"
+#include "Input.h"
+#include "Game.h"
 
-Renderer *g_Renderer = NULL;
+static const int WINDOW_W = 1280;
+static const int WINDOW_H = 720;
+
+Renderer* g_Renderer = NULL;
+Game*     g_Game     = NULL;
+
+static int s_PrevTimeMs = 0;
 
 void RenderScene(void)
 {
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glClearColor(0.0f, 0.3f, 0.3f, 1.0f);
-
-	// Renderer Test
-	g_Renderer->DrawSolidRect(0, 0, 0, 4, 1, 0, 1, 1);
-
+	g_Game->Render();
 	glutSwapBuffers();
 }
 
 void Idle(void)
 {
-	RenderScene();
+	// 실시간 게임의 심장. 그리기만 반복하던 기존 구조와 달리
+	// 경과 시간을 재서 Update 와 Render 를 분리한다.
+	int   now = glutGet(GLUT_ELAPSED_TIME);
+	float dt  = (float)(now - s_PrevTimeMs) / 1000.0f;
+	s_PrevTimeMs = now;
+
+	// 창을 끌거나 멈췄다 돌아오면 dt 가 크게 튄다. 한 프레임 분량으로 자른다.
+	if (dt > 0.1f)
+		dt = 0.1f;
+
+	g_Game->Update(dt);
+	Input::EndFrame();
+
+	glutPostRedisplay();
 }
 
-void MouseInput(int button, int state, int x, int y)
+void Reshape(int w, int h)
 {
-	RenderScene();
+	if (h < 1) h = 1;
+	glViewport(0, 0, w, h);
+	g_Renderer->Resize(w, h);
+	g_Game->Resize(w, h);
 }
 
-void KeyInput(unsigned char key, int x, int y)
+void KeyDown(unsigned char key, int x, int y)
 {
-	RenderScene();
+	if (key == 27)   // Esc
+	{
+		glutLeaveMainLoop();
+		return;
+	}
+	Input::OnKeyDown(key);
 }
 
-void SpecialKeyInput(int key, int x, int y)
+void KeyUp(unsigned char key, int x, int y)
 {
-	RenderScene();
+	Input::OnKeyUp(key);
 }
 
 int main(int argc, char **argv)
 {
-	// Initialize GL things
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGBA);
-	glutInitWindowPosition(0, 0);
-	glutInitWindowSize(500, 500);
-	glutCreateWindow("Game Software Engineering KPU");
+	glutInitWindowPosition(60, 40);
+	glutInitWindowSize(WINDOW_W, WINDOW_H);
+	glutCreateWindow("Ravenhold - The Name of the Sleeper (Prototype)");
 
-	glewInit();
-	if (glewIsSupported("GL_VERSION_3_0"))
+	if (glewInit() != GLEW_OK)
 	{
-		std::cout << " GLEW Version is 3.0\n ";
+		std::cout << "GLEW initialization failed.\n";
+		return -1;
 	}
-	else
+	if (!glewIsSupported("GL_VERSION_3_0"))
 	{
-		std::cout << "GLEW 3.0 not supported\n ";
+		std::cout << "OpenGL 3.0 is not supported on this machine.\n";
+		return -1;
 	}
 
-	// Initialize Renderer
-	g_Renderer = new Renderer(500, 500);
+	g_Renderer = new Renderer(WINDOW_W, WINDOW_H);
 	if (!g_Renderer->IsInitialized())
 	{
-		std::cout << "Renderer could not be initialized.. \n";
+		std::cout << "Renderer could not be initialized.\n";
+		delete g_Renderer;
+		return -1;
 	}
+
+	g_Game = new Game();
+	g_Game->Init(g_Renderer, WINDOW_W, WINDOW_H);
+
+	Input::Reset();
+	glutIgnoreKeyRepeat(1);   // 키를 누르고 있어도 KeyDown 이 반복 발생하지 않게
 
 	glutDisplayFunc(RenderScene);
 	glutIdleFunc(Idle);
-	glutKeyboardFunc(KeyInput);
-	glutMouseFunc(MouseInput);
-	glutSpecialFunc(SpecialKeyInput);
+	glutReshapeFunc(Reshape);
+	glutKeyboardFunc(KeyDown);
+	glutKeyboardUpFunc(KeyUp);
 
+	std::cout << "\n  Ravenhold - prototype\n"
+	          << "  WASD move   E interact   J journal   Esc quit\n\n";
+
+	s_PrevTimeMs = glutGet(GLUT_ELAPSED_TIME);
 	glutMainLoop();
 
+	delete g_Game;
 	delete g_Renderer;
 
-    return 0;
+	return 0;
 }
-
