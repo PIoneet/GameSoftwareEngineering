@@ -361,3 +361,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# 의존 라이브러리는 저장소에 함께 둔다 (자립 빌드).
+# 위쪽의 x64/ 규칙은 빌드 출력 폴더용이라 이 폴더까지 삼키므로 되살린다.
+!SimpleGame/Dependencies/x64/

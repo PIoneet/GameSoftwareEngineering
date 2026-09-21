@@ -43,6 +43,21 @@ public:
 	void DrawDiamond(float cx, float cy, float w, float h,
 	                 float r, float g, float b, float a = 1.0f);
 
+	// 원과 타원. 생물 몸통, 구슬, 둥근 창에 쓴다.
+	void DrawEllipse(float cx, float cy, float w, float h,
+	                 float r, float g, float b, float a = 1.0f);
+
+	// 물 타일. 파동은 전부 셰이더가 그린다.
+	// (worldX, worldY) 를 넘겨야 타일 경계에서 물결이 끊기지 않는다.
+	void DrawWater(float cx, float cy, float w, float h,
+	               float worldX, float worldY, float depth, float lit, float time,
+	               float r, float g, float b);
+
+	// 불꽃. 흔들림과 색 그라데이션도 셰이더가 만든다.
+	// (cx, cyBase) 는 불꽃의 밑동 중앙.
+	void DrawFlame(float cx, float cyBase, float w, float h,
+	               float time, float seed, float intensity);
+
 	// (x, y) 는 글자의 베이스라인 좌측.
 	// 주의: 이름을 DrawText 로 두면 안 된다. <windows.h> 가 DrawText 를
 	//       DrawTextW 매크로로 치환해 버려서, windows.h 를 포함한 번역 단위에서만
@@ -69,7 +84,7 @@ private:
 	void   DestroyTargets();
 	void   DrawFullscreen(GLint attribLocation);
 
-	void   DrawUnitShape(GLuint vbo, float x, float y, float w, float h,
+	void   DrawUnitShape(GLuint vbo, int vertexCount, float x, float y, float w, float h,
 	                     float r, float g, float b, float a);
 
 	Font&  FontFor(TextFont font);
@@ -82,6 +97,8 @@ private:
 
 	GLuint m_VBOQuad    = 0;   // 단위 사각형
 	GLuint m_VBODiamond = 0;   // 단위 마름모
+	GLuint m_VBOEllipse = 0;   // 단위 타원 (삼각형 부채꼴)
+	int    m_EllipseVerts = 0;
 
 	// ── 씬 셰이더 ──
 	GLuint m_SpriteProg      = 0;
@@ -98,6 +115,25 @@ private:
 	GLint  m_TexUniRes    = -1;
 	GLint  m_TexUniColor  = -1;
 	GLint  m_TexUniTex    = -1;
+
+	// ── 물 / 불꽃 ──
+	GLuint m_WaterProg      = 0;
+	GLint  m_WaterAttribPos = -1;
+	GLint  m_WaterUniRect   = -1;
+	GLint  m_WaterUniRes    = -1;
+	GLint  m_WaterUniWorld  = -1;
+	GLint  m_WaterUniColor  = -1;
+	GLint  m_WaterUniTime   = -1;
+	GLint  m_WaterUniDepth  = -1;
+	GLint  m_WaterUniLit    = -1;
+
+	GLuint m_FlameProg      = 0;
+	GLint  m_FlameAttribPos = -1;
+	GLint  m_FlameUniRect   = -1;
+	GLint  m_FlameUniRes    = -1;
+	GLint  m_FlameUniTime   = -1;
+	GLint  m_FlameUniSeed   = -1;
+	GLint  m_FlameUniInten  = -1;
 
 	// ── 사후처리 ──
 	GLuint m_BrightProg      = 0;

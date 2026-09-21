@@ -157,10 +157,21 @@ void World::ForceSand(float cx, float cy, float radius)
 	}
 }
 
+// 타일만 보고 걸을 수 있는지 — 오브젝트는 보지 않는다.
+static bool TileWalkable(TileType t)
+{
+	return t != TILE_WALL && t != TILE_WATER;
+}
+
 void World::Generate()
 {
+	m_Kind   = LEVEL_VILLAGE;
+	m_SpawnX = SPAWN_X;
+	m_SpawnY = SPAWN_Y;
+
 	m_Rng = 0x5EED1234u;
 	m_Objects.clear();
+	m_Rooms.clear();
 
 	for (int i = 0; i < GRID_W * GRID_H; ++i)
 		m_Grid[i].clear();
@@ -426,14 +437,14 @@ bool World::Blocked(float x, float y, float radius) const
 	if (x < radius || y < radius || x > MAP_W - radius || y > MAP_H - radius)
 		return true;
 
-	// 타일 — 깊은 물만 막는다. 얕은 물은 걸어 들어갈 수 있다.
+	// 타일 — 깊은 물과 벽이 막는다. 얕은 물은 걸어 들어갈 수 있다.
 	int x0 = (int)floorf(x - radius), x1 = (int)floorf(x + radius);
 	int y0 = (int)floorf(y - radius), y1 = (int)floorf(y + radius);
 
 	for (int ty = y0; ty <= y1; ++ty)
 	for (int tx = x0; tx <= x1; ++tx)
 	{
-		if (Tile(tx, ty) == TILE_WATER)
+		if (!TileWalkable(Tile(tx, ty)))
 			return true;
 	}
 
@@ -459,8 +470,442 @@ bool World::IsOpenGround(float x, float y) const
 {
 	TileType t = Tile((int)floorf(x), (int)floorf(y));
 
-	if (t != TILE_GRASS && t != TILE_MEADOW)
+	if (t != TILE_GRASS && t != TILE_MEADOW && t != TILE_FLOOR)
 		return false;
 
 	return !Blocked(x, y, 0.5f);
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────
+//  1레벨 — 랜덤 폐허
+// ─────────────────────────────────────────────────────────────────────────
+
+// 시작점에서 네 방향으로 퍼지며 닿는 칸을 표시한다.
+static void FloodFill(const std::vector<unsigned char>& open, int sx, int sy,
+                      std::vector<unsigned char>& out)
+{
+	out.assign(open.size(), 0);
+
+	if (sx < 0 || sy < 0 || sx >= MAP_W || sy >= MAP_H)
+		return;
+
+	int start = sy * MAP_W + sx;
+
+	if (!open[start])
+		return;
+
+	std::vector<int> stack;
+	stack.reserve(2048);
+	stack.push_back(start);
+	out[start] = 1;
+
+	const int dx[4] = { 1, -1, 0,  0 };
+	const int dy[4] = { 0,  0, 1, -1 };
+
+	while (!stack.empty())
+	{
+		int i = stack.back();
+		stack.pop_back();
+
+		int x = i % MAP_W;
+		int y = i / MAP_W;
+
+		for (int k = 0; k < 4; ++k)
+		{
+			int nx = x + dx[k];
+			int ny = y + dy[k];
+
+			if (nx < 0 || ny < 0 || nx >= MAP_W || ny >= MAP_H)
+				continue;
+
+			int ni = ny * MAP_W + nx;
+
+			if (out[ni] || !open[ni])
+				continue;
+
+			out[ni] = 1;
+			stack.push_back(ni);
+		}
+	}
+}
+
+void World::CarveRect(int x0, int y0, int x1, int y1, TileType t)
+{
+	if (x0 > x1) { int tmp = x0; x0 = x1; x1 = tmp; }
+	if (y0 > y1) { int tmp = y0; y0 = y1; y1 = tmp; }
+
+	for (int y = y0; y <= y1; ++y)
+	for (int x = x0; x <= x1; ++x)
+	{
+		if (x < 1 || y < 1 || x >= MAP_W - 1 || y >= MAP_H - 1)
+			continue;
+
+		m_Tiles[y][x] = t;
+	}
+}
+
+void World::CarveCorridor(int ax, int ay, int bx, int by, int half)
+{
+	// ㄱ자 — 가로로 먼저 가고 세로로 꺾는다.
+	CarveRect(ax, ay - half, bx, ay + half, TILE_FLOOR);
+	CarveRect(bx - half, ay, bx + half, by, TILE_FLOOR);
+
+	// 복도에는 통행을 막는 물건을 놓지 않는다. m_NearPath 를 그 표식으로 쓴다.
+	int lox = (ax < bx ? ax : bx) - 1;
+	int hix = (ax > bx ? ax : bx) + 1;
+	int loy = (ay < by ? ay : by) - 1;
+	int hiy = (ay > by ? ay : by) + 1;
+
+	for (int y = ay - half - 1; y <= ay + half + 1; ++y)
+	for (int x = lox; x <= hix; ++x)
+	{
+		if (x >= 0 && y >= 0 && x < MAP_W && y < MAP_H)
+			m_NearPath[y][x] = true;
+	}
+
+	for (int y = loy; y <= hiy; ++y)
+	for (int x = bx - half - 1; x <= bx + half + 1; ++x)
+	{
+		if (x >= 0 && y >= 0 && x < MAP_W && y < MAP_H)
+			m_NearPath[y][x] = true;
+	}
+}
+
+void World::PlaceRuinObjects()
+{
+	for (size_t i = 0; i < m_Rooms.size(); ++i)
+	{
+		const Room& rm = m_Rooms[i];
+
+		// 기둥 — 네 칸 간격의 열주. 복도로 쓰이는 줄은 비운다.
+		for (int y = rm.y0 + 2; y <= rm.y1 - 2; y += 4)
+		for (int x = rm.x0 + 2; x <= rm.x1 - 2; x += 4)
+		{
+			if (m_NearPath[y][x] || m_Tiles[y][x] != TILE_FLOOR)
+				continue;
+
+			if (Rand01() > 0.55f)
+				continue;
+
+			Add(OBJ_PILLAR, (float)x + 0.5f, (float)y + 0.5f,
+			    0.45f, 0.45f, 40.0f, 92.0f, true);
+		}
+
+		// 부스러기 — 통행은 막지 않는 장식
+		int rubble = 3 + (int)(Rand01() * 6.0f);
+
+		for (int k = 0; k < rubble; ++k)
+		{
+			int x = rm.x0 + 1 + (int)(Rand01() * (float)(rm.x1 - rm.x0 - 1));
+			int y = rm.y0 + 1 + (int)(Rand01() * (float)(rm.y1 - rm.y0 - 1));
+
+			if (m_Tiles[y][x] != TILE_FLOOR)
+				continue;
+
+			Add(OBJ_RUBBLE, (float)x + 0.5f, (float)y + 0.5f,
+			    0.0f, 0.0f, 36.0f, 18.0f, false);
+		}
+
+		// 상자 — 방마다 최대 하나
+		if (Rand01() < 0.45f)
+		{
+			int x = rm.x0 + 1 + (int)(Rand01() * (float)(rm.x1 - rm.x0 - 1));
+			int y = rm.y0 + 1 + (int)(Rand01() * (float)(rm.y1 - rm.y0 - 1));
+
+			if (m_Tiles[y][x] == TILE_FLOOR && !m_NearPath[y][x])
+			{
+				Add(OBJ_CRATE, (float)x + 0.5f, (float)y + 0.5f,
+				    0.4f, 0.4f, 32.0f, 28.0f, true);
+			}
+		}
+	}
+}
+
+void World::BuildWallShell()
+{
+	// 바닥에 면한 벽만 실제 덩어리로 세운다. 안쪽 벽은 보이지 않으므로 만들지 않는다.
+	// 벽을 오브젝트로 두면 캐릭터와 같은 목록에서 정렬되어 앞뒤가 맞는다.
+	const int dx[4] = { 1, -1, 0,  0 };
+	const int dy[4] = { 0,  0, 1, -1 };
+
+	for (int y = 1; y < MAP_H - 1; ++y)
+	for (int x = 1; x < MAP_W - 1; ++x)
+	{
+		if (m_Tiles[y][x] != TILE_WALL)
+			continue;
+
+		bool facesFloor = false;
+
+		for (int k = 0; k < 4; ++k)
+		{
+			if (TileWalkable(m_Tiles[y + dy[k]][x + dx[k]]))
+			{
+				facesFloor = true;
+				break;
+			}
+		}
+
+		if (!facesFloor)
+			continue;
+
+		// 통행 판정은 타일이 이미 막고 있으므로 오브젝트는 그리기 전용이다.
+		Add(OBJ_WALL, (float)x + 0.5f, (float)y + 0.5f,
+		    0.0f, 0.0f, 64.0f, 54.0f, false);
+	}
+}
+
+void World::RepairConnectivity()
+{
+	const size_t total = (size_t)MAP_W * MAP_H;
+
+	std::vector<unsigned char> tileOpen(total, 0);
+
+	for (int y = 0; y < MAP_H; ++y)
+	for (int x = 0; x < MAP_W; ++x)
+		tileOpen[(size_t)y * MAP_W + x] = TileWalkable(m_Tiles[y][x]) ? 1 : 0;
+
+	int sx = (int)m_SpawnX;
+	int sy = (int)m_SpawnY;
+
+	// ── 1) 타일만 보고 닿는 범위 ──
+	// 구조적으로 끊긴 칸은 벽으로 메운다. 갈 수 없는 방은 없느니만 못하다.
+	std::vector<unsigned char> reach;
+	FloodFill(tileOpen, sx, sy, reach);
+
+	for (int y = 0; y < MAP_H; ++y)
+	for (int x = 0; x < MAP_W; ++x)
+	{
+		size_t i = (size_t)y * MAP_W + x;
+
+		if (tileOpen[i] && !reach[i])
+		{
+			m_Tiles[y][x] = TILE_WALL;
+			tileOpen[i]   = 0;
+		}
+	}
+
+	// ── 2) 오브젝트까지 포함해 다시 확인 ──
+	for (int pass = 0; pass < 4; ++pass)
+	{
+		BuildGrid();
+
+		std::vector<unsigned char> open(total, 0);
+
+		for (int y = 0; y < MAP_H; ++y)
+		for (int x = 0; x < MAP_W; ++x)
+		{
+			size_t i = (size_t)y * MAP_W + x;
+
+			if (!tileOpen[i])
+				continue;
+
+			open[i] = Blocked((float)x + 0.5f, (float)y + 0.5f, 0.30f) ? 0 : 1;
+		}
+
+		std::vector<unsigned char> got;
+		FloodFill(open, sx, sy, got);
+
+		// 열려 있는데 닿지 못한 칸 = 오브젝트가 길을 막았다.
+		std::vector<unsigned char> orphan(total, 0);
+		bool anyOrphan = false;
+
+		for (size_t i = 0; i < total; ++i)
+		{
+			if (open[i] && !got[i])
+			{
+				orphan[i] = 1;
+				anyOrphan = true;
+			}
+		}
+
+		if (!anyOrphan)
+			break;
+
+		// 고립된 칸과 그 주변을 막고 있는 오브젝트를 걷어낸다.
+		std::vector<WorldObject> kept;
+		kept.reserve(m_Objects.size());
+
+		for (size_t k = 0; k < m_Objects.size(); ++k)
+		{
+			const WorldObject& o = m_Objects[k];
+			bool drop = false;
+
+			if (o.blocking)
+			{
+				int x0 = (int)floorf(o.x - o.halfW - 1.0f);
+				int x1 = (int)floorf(o.x + o.halfW + 1.0f);
+				int y0 = (int)floorf(o.y - o.halfH - 1.0f);
+				int y1 = (int)floorf(o.y + o.halfH + 1.0f);
+
+				for (int y = y0; y <= y1 && !drop; ++y)
+				for (int x = x0; x <= x1 && !drop; ++x)
+				{
+					if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H)
+						continue;
+
+					if (orphan[(size_t)y * MAP_W + x])
+						drop = true;
+				}
+			}
+
+			if (!drop)
+				kept.push_back(o);
+		}
+
+		if (kept.size() == m_Objects.size())
+		{
+			// 지울 오브젝트가 없는데도 닿지 않는다면 그 구역 자체를 없앤다.
+			for (int y = 0; y < MAP_H; ++y)
+			for (int x = 0; x < MAP_W; ++x)
+			{
+				size_t i = (size_t)y * MAP_W + x;
+
+				if (orphan[i])
+				{
+					m_Tiles[y][x] = TILE_WALL;
+					tileOpen[i]   = 0;
+				}
+			}
+		}
+		else
+		{
+			m_Objects.swap(kept);
+		}
+	}
+}
+
+void World::GenerateRuin(unsigned int seed)
+{
+	m_Kind = LEVEL_RUIN;
+	m_Rng  = (seed != 0u) ? seed : 1u;
+
+	m_Objects.clear();
+	m_Rooms.clear();
+
+	for (int i = 0; i < GRID_W * GRID_H; ++i)
+		m_Grid[i].clear();
+
+	// ── 1) 전부 벽으로 채운다 ──
+	for (int y = 0; y < MAP_H; ++y)
+	for (int x = 0; x < MAP_W; ++x)
+	{
+		m_Tiles[y][x]     = TILE_WALL;
+		m_Variation[y][x] = Hash01(x, y);
+		m_NearPath[y][x]  = false;
+	}
+
+	// ── 2) 겹치지 않게 방을 파낸다 ──
+	const int ROOM_TARGET = 15;
+
+	for (int attempt = 0; attempt < 900 && (int)m_Rooms.size() < ROOM_TARGET; ++attempt)
+	{
+		int w = 8 + (int)(Rand01() * 11.0f);
+		int h = 8 + (int)(Rand01() * 11.0f);
+		int x = 3 + (int)(Rand01() * (float)(MAP_W - w - 7));
+		int y = 3 + (int)(Rand01() * (float)(MAP_H - h - 7));
+
+		Room r;
+		r.x0 = x;
+		r.y0 = y;
+		r.x1 = x + w;
+		r.y1 = y + h;
+
+		bool clash = false;
+
+		for (size_t i = 0; i < m_Rooms.size(); ++i)
+		{
+			const Room& o = m_Rooms[i];
+
+			if (r.x0 <= o.x1 + 3 && r.x1 + 3 >= o.x0 &&
+			    r.y0 <= o.y1 + 3 && r.y1 + 3 >= o.y0)
+			{
+				clash = true;
+				break;
+			}
+		}
+
+		if (clash)
+			continue;
+
+		CarveRect(r.x0, r.y0, r.x1, r.y1, TILE_FLOOR);
+		m_Rooms.push_back(r);
+	}
+
+	// ── 3) 방을 차례로 잇는다 ──
+	// 연결성은 여기서 구조적으로 보장된다. 뒤의 검증은 오브젝트가
+	// 길을 막는 경우를 잡기 위한 안전망이다.
+	for (size_t i = 1; i < m_Rooms.size(); ++i)
+	{
+		CarveCorridor((int)m_Rooms[i - 1].CenterX(), (int)m_Rooms[i - 1].CenterY(),
+		              (int)m_Rooms[i].CenterX(),     (int)m_Rooms[i].CenterY(), 1);
+	}
+
+	// ── 4) 여분 통로 — 막다른 길만 있으면 답답하다 ──
+	if (m_Rooms.size() >= 3)
+	{
+		for (int k = 0; k < 4; ++k)
+		{
+			int a = (int)(Rand01() * (float)m_Rooms.size());
+			int b = (int)(Rand01() * (float)m_Rooms.size());
+
+			if (a >= (int)m_Rooms.size()) a = 0;
+			if (b >= (int)m_Rooms.size()) b = 0;
+			if (a == b)                   continue;
+
+			CarveCorridor((int)m_Rooms[a].CenterX(), (int)m_Rooms[a].CenterY(),
+			              (int)m_Rooms[b].CenterX(), (int)m_Rooms[b].CenterY(), 1);
+		}
+	}
+
+	// ── 5) 시작점 — 첫 방 한가운데 ──
+	if (!m_Rooms.empty())
+	{
+		m_SpawnX = m_Rooms[0].CenterX();
+		m_SpawnY = m_Rooms[0].CenterY();
+	}
+	else
+	{
+		m_SpawnX = (float)(MAP_W / 2);
+		m_SpawnY = (float)(MAP_H / 2);
+	}
+
+	// ── 6) 물웅덩이 — 방 구석에만 둔다. 가운데를 막으면 길이 끊긴다. ──
+	for (size_t i = 2; i < m_Rooms.size(); ++i)
+	{
+		if (Rand01() > 0.40f)
+			continue;
+
+		const Room& rm = m_Rooms[i];
+
+		int cx = rm.x0 + 3;
+		int cy = rm.y0 + 3;
+		int rr = 2;
+
+		for (int y = cy - rr; y <= cy + rr; ++y)
+		for (int x = cx - rr; x <= cx + rr; ++x)
+		{
+			if (x <= rm.x0 || y <= rm.y0 || x >= rm.x1 || y >= rm.y1)
+				continue;
+
+			if (m_NearPath[y][x])
+				continue;
+
+			int ddx = x - cx;
+			int ddy = y - cy;
+			int d2  = ddx * ddx + ddy * ddy;
+
+			if (d2 <= rr * rr - 2)       m_Tiles[y][x] = TILE_WATER;
+			else if (d2 <= rr * rr + 1)  m_Tiles[y][x] = TILE_SHALLOW;
+		}
+	}
+
+	// ── 7) 배치와 검증 ──
+	PlaceRuinObjects();
+	RepairConnectivity();
+
+	// 벽 껍데기는 지형이 확정된 뒤에 세운다. 통행은 타일이 막으므로
+	// 이 오브젝트들은 그리기 전용이고 연결성에 영향을 주지 않는다.
+	BuildWallShell();
+	BuildGrid();
 }

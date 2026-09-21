@@ -2,6 +2,8 @@
 #include "Renderer.h"
 
 #include <cstring>
+#include <cmath>
+#include <vector>
 
 Renderer::Renderer(int windowSizeX, int windowSizeY)
 {
@@ -14,9 +16,12 @@ Renderer::~Renderer()
 
 	if (m_VBOQuad)    glDeleteBuffers(1, &m_VBOQuad);
 	if (m_VBODiamond) glDeleteBuffers(1, &m_VBODiamond);
+	if (m_VBOEllipse) glDeleteBuffers(1, &m_VBOEllipse);
 
 	if (m_SpriteProg) glDeleteProgram(m_SpriteProg);
 	if (m_TexProg)    glDeleteProgram(m_TexProg);
+	if (m_WaterProg)  glDeleteProgram(m_WaterProg);
+	if (m_FlameProg)  glDeleteProgram(m_FlameProg);
 	if (m_BrightProg) glDeleteProgram(m_BrightProg);
 	if (m_BlurProg)   glDeleteProgram(m_BlurProg);
 	if (m_CompProg)   glDeleteProgram(m_CompProg);
@@ -33,6 +38,8 @@ void Renderer::Initialize(int windowSizeX, int windowSizeY)
 
 	m_SpriteProg = CompileShaders("Sprite.vs",   "Sprite.fs");
 	m_TexProg    = CompileShaders("Textured.vs", "Textured.fs");
+	m_WaterProg  = CompileShaders("Water.vs",    "Water.fs");
+	m_FlameProg  = CompileShaders("Flame.vs",    "Flame.fs");
 	m_BrightProg = CompileShaders("Post.vs",     "Bright.fs");
 	m_BlurProg   = CompileShaders("Post.vs",     "Blur.fs");
 	m_CompProg   = CompileShaders("Post.vs",     "Composite.fs");
@@ -41,8 +48,9 @@ void Renderer::Initialize(int windowSizeX, int windowSizeY)
 
 	// uniform / attribute 위치는 여기서 한 번만 조회한다.
 	// 드로우 콜마다 조회하면 오브젝트가 늘어날수록 비용이 쌓인다.
-	if (m_SpriteProg && m_TexProg && m_BrightProg && m_BlurProg && m_CompProg &&
-	    m_VBOQuad && m_VBODiamond)
+	if (m_SpriteProg && m_TexProg && m_WaterProg && m_FlameProg &&
+	    m_BrightProg && m_BlurProg && m_CompProg &&
+	    m_VBOQuad && m_VBODiamond && m_VBOEllipse)
 	{
 		m_SpriteAttribPos = glGetAttribLocation(m_SpriteProg, "a_Position");
 		m_SpriteUniRect   = glGetUniformLocation(m_SpriteProg, "u_Rect");
@@ -55,6 +63,22 @@ void Renderer::Initialize(int windowSizeX, int windowSizeY)
 		m_TexUniRes    = glGetUniformLocation(m_TexProg, "u_Resolution");
 		m_TexUniColor  = glGetUniformLocation(m_TexProg, "u_Color");
 		m_TexUniTex    = glGetUniformLocation(m_TexProg, "u_Tex");
+
+		m_WaterAttribPos = glGetAttribLocation(m_WaterProg, "a_Position");
+		m_WaterUniRect   = glGetUniformLocation(m_WaterProg, "u_Rect");
+		m_WaterUniRes    = glGetUniformLocation(m_WaterProg, "u_Resolution");
+		m_WaterUniWorld  = glGetUniformLocation(m_WaterProg, "u_World");
+		m_WaterUniColor  = glGetUniformLocation(m_WaterProg, "u_Color");
+		m_WaterUniTime   = glGetUniformLocation(m_WaterProg, "u_Time");
+		m_WaterUniDepth  = glGetUniformLocation(m_WaterProg, "u_Depth");
+		m_WaterUniLit    = glGetUniformLocation(m_WaterProg, "u_Lit");
+
+		m_FlameAttribPos = glGetAttribLocation(m_FlameProg, "a_Position");
+		m_FlameUniRect   = glGetUniformLocation(m_FlameProg, "u_Rect");
+		m_FlameUniRes    = glGetUniformLocation(m_FlameProg, "u_Resolution");
+		m_FlameUniTime   = glGetUniformLocation(m_FlameProg, "u_Time");
+		m_FlameUniSeed   = glGetUniformLocation(m_FlameProg, "u_Seed");
+		m_FlameUniInten  = glGetUniformLocation(m_FlameProg, "u_Intensity");
 
 		m_BrightAttribPos = glGetAttribLocation(m_BrightProg, "a_Position");
 		m_BrightUniScene  = glGetUniformLocation(m_BrightProg, "u_Scene");
@@ -213,6 +237,35 @@ void Renderer::CreateVertexBufferObjects()
 	glGenBuffers(1, &m_VBODiamond);
 	glBindBuffer(GL_ARRAY_BUFFER, m_VBODiamond);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(diamond), diamond, GL_STATIC_DRAW);
+
+	// 단위 타원 — 중심에서 뻗는 삼각형들로 채운다.
+	const int   segments = 24;
+	const float twoPi    = 6.2831853f;
+
+	std::vector<float> ellipse;
+	ellipse.reserve(segments * 9);
+
+	for (int i = 0; i < segments; ++i)
+	{
+		float a0 = twoPi * (float)i / (float)segments;
+		float a1 = twoPi * (float)(i + 1) / (float)segments;
+
+		float x0 = 0.5f + 0.5f * cosf(a0);
+		float y0 = 0.5f + 0.5f * sinf(a0);
+		float x1 = 0.5f + 0.5f * cosf(a1);
+		float y1 = 0.5f + 0.5f * sinf(a1);
+
+		ellipse.push_back(0.5f); ellipse.push_back(0.5f); ellipse.push_back(0.0f);
+		ellipse.push_back(x0);   ellipse.push_back(y0);   ellipse.push_back(0.0f);
+		ellipse.push_back(x1);   ellipse.push_back(y1);   ellipse.push_back(0.0f);
+	}
+
+	m_EllipseVerts = segments * 3;
+
+	glGenBuffers(1, &m_VBOEllipse);
+	glBindBuffer(GL_ARRAY_BUFFER, m_VBOEllipse);
+	glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(ellipse.size() * sizeof(float)),
+	             &ellipse[0], GL_STATIC_DRAW);
 }
 
 void Renderer::AddShader(GLuint shaderProgram, const char* shaderText, GLenum shaderType)
@@ -437,7 +490,7 @@ void Renderer::PostProcess(float dread, float time)
 //  도형
 // ─────────────────────────────────────────────────────────────────────────
 
-void Renderer::DrawUnitShape(GLuint vbo, float x, float y, float w, float h,
+void Renderer::DrawUnitShape(GLuint vbo, int vertexCount, float x, float y, float w, float h,
                              float r, float g, float b, float a)
 {
 	if (!m_Initialized)
@@ -453,7 +506,7 @@ void Renderer::DrawUnitShape(GLuint vbo, float x, float y, float w, float h,
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
 	glVertexAttribPointer(m_SpriteAttribPos, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, 0);
 
-	glDrawArrays(GL_TRIANGLES, 0, 6);
+	glDrawArrays(GL_TRIANGLES, 0, vertexCount);
 
 	glDisableVertexAttribArray(m_SpriteAttribPos);
 }
@@ -461,13 +514,69 @@ void Renderer::DrawUnitShape(GLuint vbo, float x, float y, float w, float h,
 void Renderer::DrawQuad(float x, float y, float w, float h,
                         float r, float g, float b, float a)
 {
-	DrawUnitShape(m_VBOQuad, x, y, w, h, r, g, b, a);
+	DrawUnitShape(m_VBOQuad, 6, x, y, w, h, r, g, b, a);
 }
 
 void Renderer::DrawDiamond(float cx, float cy, float w, float h,
                            float r, float g, float b, float a)
 {
-	DrawUnitShape(m_VBODiamond, cx - w * 0.5f, cy - h * 0.5f, w, h, r, g, b, a);
+	DrawUnitShape(m_VBODiamond, 6, cx - w * 0.5f, cy - h * 0.5f, w, h, r, g, b, a);
+}
+
+void Renderer::DrawEllipse(float cx, float cy, float w, float h,
+                           float r, float g, float b, float a)
+{
+	DrawUnitShape(m_VBOEllipse, m_EllipseVerts,
+	              cx - w * 0.5f, cy - h * 0.5f, w, h, r, g, b, a);
+}
+
+void Renderer::DrawWater(float cx, float cy, float w, float h,
+                         float worldX, float worldY, float depth, float lit, float time,
+                         float r, float g, float b)
+{
+	if (!m_Initialized)
+		return;
+
+	glUseProgram(m_WaterProg);
+
+	glUniform4f(m_WaterUniRect, cx - w * 0.5f, cy - h * 0.5f, w, h);
+	glUniform2f(m_WaterUniRes, m_WindowSizeX, m_WindowSizeY);
+	glUniform2f(m_WaterUniWorld, worldX, worldY);
+	glUniform4f(m_WaterUniColor, r, g, b, 1.0f);
+	glUniform1f(m_WaterUniTime, time);
+	glUniform1f(m_WaterUniDepth, depth);
+	glUniform1f(m_WaterUniLit, lit);
+
+	glEnableVertexAttribArray(m_WaterAttribPos);
+	glBindBuffer(GL_ARRAY_BUFFER, m_VBODiamond);
+	glVertexAttribPointer(m_WaterAttribPos, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, 0);
+
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+
+	glDisableVertexAttribArray(m_WaterAttribPos);
+}
+
+void Renderer::DrawFlame(float cx, float cyBase, float w, float h,
+                         float time, float seed, float intensity)
+{
+	if (!m_Initialized)
+		return;
+
+	glUseProgram(m_FlameProg);
+
+	glUniform4f(m_FlameUniRect, cx - w * 0.5f, cyBase - h, w, h);
+	glUniform2f(m_FlameUniRes, m_WindowSizeX, m_WindowSizeY);
+	glUniform1f(m_FlameUniTime, time);
+	glUniform1f(m_FlameUniSeed, seed);
+	glUniform1f(m_FlameUniInten, intensity);
+
+	glEnableVertexAttribArray(m_FlameAttribPos);
+	glBindBuffer(GL_ARRAY_BUFFER, m_VBOQuad);
+	glVertexAttribPointer(m_FlameAttribPos, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, 0);
+
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+
+	glDisableVertexAttribArray(m_FlameAttribPos);
 }
 
 

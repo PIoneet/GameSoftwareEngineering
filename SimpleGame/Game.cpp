@@ -1,4 +1,4 @@
-#include "stdafx.h"
+﻿#include "stdafx.h"
 #include "Game.h"
 #include "Renderer.h"
 #include "Draw.h"
@@ -16,7 +16,6 @@
 
 static const float PLAYER_SPEED = 4.6f;    // 타일/초
 static const float NPC_SPEED    = 1.1f;
-static const float BODY_RADIUS  = 0.30f;
 static const float TALK_RANGE   = 2.0f;
 
 static const int MOTE_COUNT  = 96;
@@ -318,6 +317,11 @@ void Game::Init(Renderer* renderer, int windowW, int windowH)
 	m_WinW = windowW;
 	m_WinH = windowH;
 
+	// 모델은 첫 실행에서만 절차적으로 굽고, 이후에는 캐시 파일에서 읽는다.
+	m_Models.LoadOrBuild("models.cache");
+
+	m_Stats.Reset();
+
 	m_World.Generate();
 
 	// ── 플레이어 ──
@@ -535,6 +539,18 @@ void Game::Update(float dt)
 	if (Input::Pressed('j'))
 		m_JournalOpen = !m_JournalOpen;
 
+	if (Input::Pressed('c'))
+		m_StatsOpen = !m_StatsOpen;
+
+	// 개발용 — 1레벨을 바로 오간다. 튜토리얼을 매번 지나지 않아도 되게.
+	if (Input::Pressed('0'))
+	{
+		if (m_Level == LEVEL_VILLAGE)
+			EnterRuin((unsigned int)(m_Time * 997.0f) + 12345u);
+		else
+			ReturnToVillage();
+	}
+
 	if (m_DialogueOpen)
 	{
 		// 대화 중에는 이동을 멈춘다.
@@ -559,8 +575,16 @@ void Game::Update(float dt)
 		}
 	}
 
-	UpdateNpcs(dt);
-	UpdateBeasts(dt);
+	if (m_Level == LEVEL_VILLAGE)
+	{
+		UpdateNpcs(dt);
+		UpdateBeasts(dt);
+	}
+	else
+	{
+		UpdateRuin(dt);
+	}
+
 	UpdateMotes(dt);
 
 	// ── 카메라 — 플레이어를 부드럽게 따라간다 ──
@@ -582,13 +606,19 @@ void Game::Update(float dt)
 		m_CamY += (targetCamY - m_CamY) * k;
 	}
 
-	// ── 비석에 가까울수록 화면이 무거워진다 ──
-	float d      = Dist(m_Player.x, m_Player.y, SIGIL_X, SIGIL_Y);
-	float target = 1.0f - Clamp01((d - 5.0f) / 22.0f);
+	// ── 화면의 무게 ──
+	float target = 0.55f;   // 폐허는 항상 무겁다
 
-	// 동전을 쥔 뒤로는 완전히 걷히지 않는다.
-	if (m_HasCoin && target < 0.22f)
-		target = 0.22f;
+	if (m_Level == LEVEL_VILLAGE)
+	{
+		// 마을에서는 비석에 가까울수록 무거워진다.
+		float d = Dist(m_Player.x, m_Player.y, SIGIL_X, SIGIL_Y);
+		target  = 1.0f - Clamp01((d - 5.0f) / 22.0f);
+
+		// 동전을 쥔 뒤로는 완전히 걷히지 않는다.
+		if (m_HasCoin && target < 0.22f)
+			target = 0.22f;
+	}
 
 	m_Dread += (target - m_Dread) * Clamp01(dt * 1.8f);
 }
@@ -835,6 +865,10 @@ void Game::UpdateInteraction()
 {
 	m_FocusNpc   = -1;
 	m_FocusSigil = false;
+
+	// 폐허에는 말 걸 상대도 비석도 없다.
+	if (m_Level == LEVEL_RUIN)
+		return;
 
 	float best = TALK_RANGE;
 
@@ -1096,6 +1130,7 @@ void Game::RenderGroundGlow(float ox, float oy)
 	}
 
 	// 비석에서 새어 나오는 빛
+	if (m_Level == LEVEL_VILLAGE)
 	{
 		float sx = ox + IsoScreenX(SIGIL_X, SIGIL_Y);
 		float sy = oy + IsoScreenY(SIGIL_X, SIGIL_Y);
@@ -1105,6 +1140,23 @@ void Game::RenderGroundGlow(float ox, float oy)
 
 		Draw::LightPool(*m_R, sx, sy, 175.0f, 0.24f, 0.92f, 0.84f,
 		                (0.16f + pulse * 0.10f) * boost);
+	}
+
+	// 경험치 구슬은 스스로 바닥을 밝힌다.
+	for (size_t i = 0; i < m_Pickups.size(); ++i)
+	{
+		const Pickup& p = m_Pickups[i];
+
+		if (p.taken || p.kind != 0)
+			continue;
+
+		if (Dist(p.x, p.y, m_Player.x, m_Player.y) > 26.0f)
+			continue;
+
+		float sx = ox + IsoScreenX(p.x, p.y);
+		float sy = oy + IsoScreenY(p.x, p.y);
+
+		Draw::LightPool(*m_R, sx, sy, 60.0f, 0.26f, 0.90f, 0.86f, 0.18f);
 	}
 }
 
@@ -1155,6 +1207,32 @@ void Game::RenderSorted(float ox, float oy)
 		m_Draws.push_back(d);
 	}
 
+	for (size_t i = 0; i < m_Monsters.size(); ++i)
+	{
+		if (!m_Monsters[i].alive && m_Monsters[i].deathTimer <= 0.0f)
+			continue;
+
+		Drawable d;
+		d.depth = IsoDepth(m_Monsters[i].c.x, m_Monsters[i].c.y);
+		d.kind  = 4;
+		d.index = (int)i;
+
+		m_Draws.push_back(d);
+	}
+
+	for (size_t i = 0; i < m_Pickups.size(); ++i)
+	{
+		if (m_Pickups[i].taken)
+			continue;
+
+		Drawable d;
+		d.depth = IsoDepth(m_Pickups[i].x, m_Pickups[i].y);
+		d.kind  = 5;
+		d.index = (int)i;
+
+		m_Draws.push_back(d);
+	}
+
 	{
 		Drawable d;
 		d.depth = IsoDepth(m_Player.x, m_Player.y);
@@ -1181,7 +1259,7 @@ void Game::RenderSorted(float ox, float oy)
 			float sy  = oy + IsoScreenY(o.x, o.y);
 			float lit = Draw::LightAt(o.x, o.y, m_Player.x, m_Player.y);
 
-			Draw::Object(*m_R, o, sx, sy, lit, m_Time, m_HasCoin, highlight);
+			Draw::Object(*m_R, m_Models, o, sx, sy, lit, m_Time, m_HasCoin, highlight);
 		}
 		else if (d.kind == 1)
 		{
@@ -1191,7 +1269,7 @@ void Game::RenderSorted(float ox, float oy)
 			float sy  = oy + IsoScreenY(n.c.x, n.c.y);
 			float lit = Draw::LightAt(n.c.x, n.c.y, m_Player.x, m_Player.y);
 
-			Draw::Person(*m_R, sx, sy, lit, m_Time, LOOKS[n.look],
+			Draw::Person(*m_R, m_Models, sx, sy, lit, m_Time, LOOKS[n.look],
 			             n.c.facing, n.c.walkPhase, n.c.walkAmount, n.c.bobPhase, false);
 		}
 		else if (d.kind == 3)
@@ -1202,17 +1280,50 @@ void Game::RenderSorted(float ox, float oy)
 			float sy  = oy + IsoScreenY(b.c.x, b.c.y);
 			float lit = Draw::LightAt(b.c.x, b.c.y, m_Player.x, m_Player.y);
 
-			Draw::Beast(*m_R, sx, sy, lit, m_Time, b.kind,
+			Draw::Beast(*m_R, m_Models, sx, sy, lit, m_Time, b.kind,
 			            b.c.facing, b.c.walkPhase, b.c.walkAmount, b.alert);
+		}
+		else if (d.kind == 4)
+		{
+			const Monster& m = m_Monsters[d.index];
+
+			float sx  = ox + IsoScreenX(m.c.x, m.c.y);
+			float sy  = oy + IsoScreenY(m.c.x, m.c.y);
+			float lit = Draw::LightAt(m.c.x, m.c.y, m_Player.x, m_Player.y);
+
+			// 죽는 중이면 가라앉으며 사라진다.
+			if (!m.alive)
+			{
+				float t = Clamp01(m.deathTimer / 0.5f);
+				sy += (1.0f - t) * 8.0f;
+				lit *= t;
+			}
+
+			Draw::Monster(*m_R, m_Models, sx, sy, lit, m_Time, m.kind,
+			              m.c.facing, m.c.walkPhase, m.c.walkAmount, m.hurtFlash);
+		}
+		else if (d.kind == 5)
+		{
+			const Pickup& p = m_Pickups[d.index];
+
+			float sx  = ox + IsoScreenX(p.x, p.y);
+			float sy  = oy + IsoScreenY(p.x, p.y);
+			float lit = Draw::LightAt(p.x, p.y, m_Player.x, m_Player.y);
+
+			Draw::Pickup(*m_R, m_Models, sx, sy, lit, m_Time, p.kind, p.bobSeed);
 		}
 		else
 		{
 			float sx = ox + IsoScreenX(m_Player.x, m_Player.y);
 			float sy = oy + IsoScreenY(m_Player.x, m_Player.y);
 
-			Draw::Person(*m_R, sx, sy, 1.0f, m_Time, LOOKS[14],
+			Draw::Person(*m_R, m_Models, sx, sy, 1.0f, m_Time, LOOKS[14],
 			             m_Player.facing, m_Player.walkPhase, m_Player.walkAmount,
 			             m_Player.bobPhase, true);
+
+			// 공격 궤적은 플레이어 위에 얹는다.
+			if (m_AttackAnim >= 0.0f)
+				Draw::AttackArc(*m_R, sx, sy, m_Player.facing, m_AttackAnim);
 		}
 	}
 }
@@ -1267,6 +1378,13 @@ void Game::Panel(float x, float y, float w, float h, float a)
 void Game::RenderUI()
 {
 	wchar_t buf[192];
+
+	// 폐허에서는 의뢰 대신 전투 정보를 보여준다.
+	if (m_Level == LEVEL_RUIN)
+	{
+		RenderRuinUI();
+		return;
+	}
 
 	// ── 목표 ──
 	{

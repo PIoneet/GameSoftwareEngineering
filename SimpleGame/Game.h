@@ -2,8 +2,13 @@
 
 #include <vector>
 #include "World.h"
+#include "Model.h"
+#include "Stats.h"
 
 class Renderer;
+
+// 캐릭터 충돌 반경 (타일). Game.cpp 와 Level1.cpp 가 함께 쓴다.
+const float BODY_RADIUS = 0.30f;
 
 // 튜토리얼 의뢰 "호수 보고서" 의 진행 단계
 enum QuestStage
@@ -71,8 +76,39 @@ struct LightSource
 struct Drawable
 {
 	float depth;
-	int   kind;           // 0 = 오브젝트, 1 = NPC, 2 = 플레이어, 3 = 짐승
+	int   kind;           // 0 = 오브젝트, 1 = NPC, 2 = 플레이어, 3 = 짐승, 4 = 몬스터, 5 = 습득물
 	int   index;
+};
+
+// ── 1레벨 ──
+
+struct Monster
+{
+	Character c;
+
+	int   kind;           // 0 슬라임, 1 초퍼, 2 스피터
+	int   hp, maxHp;
+	int   attack;
+	int   xpReward;
+
+	float speed;
+	float aggroRange;
+	float attackCd;       // 남은 공격 대기
+	float hurtFlash;      // 피격 섬광 (0~1)
+	float knockX, knockY; // 밀려나는 속도
+
+	bool  alive;
+	float deathTimer;     // 죽고 사라지기까지
+};
+
+struct Pickup
+{
+	float x, y;
+	int   kind;           // 0 경험치 구슬, 1 동전, 2 회복약
+	int   value;
+	float bobSeed;
+	float life;
+	bool  taken;
 };
 
 class Game
@@ -115,8 +151,20 @@ private:
 	// 막히지 않은 가까운 자리를 찾는다 (NPC 초기 배치 안전장치)
 	bool FindFreeSpot(float& x, float& y, float radius) const;
 
-	Renderer* m_R = 0;
-	World     m_World;
+	// ── 1레벨 (Level1.cpp) ──
+	void EnterRuin(unsigned int seed);
+	void ReturnToVillage();
+	void UpdateRuin(float dt);
+	void RenderRuinEntities(float ox, float oy);
+	void RenderRuinUI();
+	void SpawnRuinMonsters();
+	void DoPlayerAttack();
+	void HurtPlayer(int amount);
+	void DropLoot(float x, float y, int monsterKind);
+
+	Renderer*    m_R = 0;
+	World        m_World;
+	ModelLibrary m_Models;
 
 	int   m_WinW = 1280;
 	int   m_WinH = 720;
@@ -151,4 +199,20 @@ private:
 	float m_ToastTimer = 0.0f;
 	const wchar_t* m_ToastText = 0;
 	float m_Dread = 0.0f;
+
+	// ── 1레벨 상태 ──
+	LevelKind m_Level = LEVEL_VILLAGE;
+
+	PlayerStats          m_Stats;
+	std::vector<Monster> m_Monsters;
+	std::vector<Pickup>  m_Pickups;
+
+	bool  m_StatsOpen    = false;
+	float m_AttackCd     = 0.0f;   // 남은 공격 대기
+	float m_AttackAnim   = -1.0f;  // 0~1 진행, 음수면 공격 중이 아님
+	float m_HurtFlash    = 0.0f;   // 플레이어 피격 섬광
+	float m_LevelUpTimer = 0.0f;   // 레벨업 배너
+	int   m_Killed       = 0;
+	float m_RuinIntro    = 0.0f;   // 진입 연출
+	unsigned int m_RuinSeed = 0;
 };

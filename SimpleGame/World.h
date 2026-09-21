@@ -9,7 +9,15 @@ enum TileType
 	TILE_PATH,
 	TILE_SAND,
 	TILE_SHALLOW,
-	TILE_WATER
+	TILE_WATER,
+	TILE_FLOOR,     // 폐허 바닥
+	TILE_WALL       // 폐허 벽 — 통행 불가
+};
+
+enum LevelKind
+{
+	LEVEL_VILLAGE,   // 튜토리얼 마을
+	LEVEL_RUIN       // 1레벨 — 랜덤 생성 폐허
 };
 
 enum ObjectType
@@ -29,7 +37,12 @@ enum ObjectType
 	OBJ_LANTERN,
 	OBJ_SIGIL,
 	OBJ_REED,
-	OBJ_CRATE
+	OBJ_CRATE,
+
+	// 폐허
+	OBJ_WALL,
+	OBJ_PILLAR,
+	OBJ_RUBBLE
 };
 
 struct WorldObject
@@ -61,10 +74,26 @@ const float SHORE_Y    = 66.0f;
 const float SIGIL_X    = 62.8f;   // 비석
 const float SIGIL_Y    = 66.8f;
 
+// 한 방의 범위 (양 끝 포함)
+struct Room
+{
+	int x0, y0, x1, y1;
+
+	float CenterX() const { return (float)(x0 + x1) * 0.5f + 0.5f; }
+	float CenterY() const { return (float)(y0 + y1) * 0.5f + 0.5f; }
+};
+
 class World
 {
 public:
-	void Generate();
+	void Generate();                          // 마을 (튜토리얼)
+	void GenerateRuin(unsigned int seed);     // 1레벨 — 랜덤 폐허
+
+	LevelKind Kind()   const { return m_Kind; }
+	float     SpawnX() const { return m_SpawnX; }
+	float     SpawnY() const { return m_SpawnY; }
+
+	const std::vector<Room>& Rooms() const { return m_Rooms; }
 
 	TileType Tile(int x, int y) const;
 	float    Variation(int x, int y) const;   // 0..1, 타일 밝기·디테일 변주
@@ -86,6 +115,16 @@ private:
 	void PlaceShore();
 	void BuildGrid();
 
+	// ── 폐허 생성 ──
+	void CarveRect(int x0, int y0, int x1, int y1, TileType t);
+	void CarveCorridor(int ax, int ay, int bx, int by, int half);
+	void PlaceRuinObjects();
+	void BuildWallShell();
+
+	// 걸을 수 있는 칸이 모두 시작점에서 닿는지 확인하고, 아니면 고친다.
+	// 막힌 오브젝트를 먼저 걷어내고, 그래도 닿지 않는 구역은 벽으로 메운다.
+	void RepairConnectivity();
+
 	void Add(ObjectType type, float x, float y,
 	         float halfW, float halfH, float width, float height, bool blocking);
 
@@ -97,6 +136,11 @@ private:
 
 	std::vector<WorldObject> m_Objects;
 	std::vector<int>         m_Grid[GRID_W * GRID_H];
+	std::vector<Room>        m_Rooms;
+
+	LevelKind m_Kind   = LEVEL_VILLAGE;
+	float     m_SpawnX = SPAWN_X;
+	float     m_SpawnY = SPAWN_Y;
 
 	unsigned int m_Rng = 0x5EED1234u;
 };

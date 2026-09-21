@@ -14,6 +14,67 @@ namespace
 	{
 		return (float)((variant * 37 + salt * 101) % 100) * 0.01f;
 	}
+
+	int ModelForObject(int type)
+	{
+		switch (type)
+		{
+		case OBJ_TREE:     return MODEL_TREE;
+		case OBJ_PINE:     return MODEL_PINE;
+		case OBJ_BUSH:     return MODEL_BUSH;
+		case OBJ_STUMP:    return MODEL_STUMP;
+		case OBJ_ROCK:     return MODEL_ROCK;
+		case OBJ_HOUSE:    return MODEL_HOUSE;
+		case OBJ_INN:      return MODEL_INN;
+		case OBJ_CHAPEL:   return MODEL_CHAPEL;
+		case OBJ_FENCE:    return MODEL_FENCE;
+		case OBJ_WELL:     return MODEL_WELL;
+		case OBJ_BOARD:    return MODEL_BOARD;
+		case OBJ_CAMPFIRE: return MODEL_CAMPFIRE;
+		case OBJ_LANTERN:  return MODEL_LANTERN;
+		case OBJ_SIGIL:    return MODEL_SIGIL;
+		case OBJ_REED:     return MODEL_REED;
+		case OBJ_CRATE:    return MODEL_CRATE;
+		case OBJ_PILLAR:   return MODEL_PILLAR;
+		case OBJ_RUBBLE:   return MODEL_RUBBLE;
+		default:           return -1;
+		}
+	}
+
+	// 오브젝트마다 그림자의 크기와 진하기가 다르다.
+	void ShadowFor(int type, float w, float& outW, float& outH, float& outStrength)
+	{
+		outW        = w * 0.85f;
+		outH        = w * 0.40f;
+		outStrength = 0.9f;
+
+		switch (type)
+		{
+		case OBJ_HOUSE:
+		case OBJ_INN:
+		case OBJ_CHAPEL:
+			outW = w * 1.05f; outH = w * 0.50f; outStrength = 1.0f;
+			break;
+
+		case OBJ_TREE:
+		case OBJ_PINE:
+			outW = w * 0.80f; outH = w * 0.38f; outStrength = 0.95f;
+			break;
+
+		case OBJ_FENCE:
+		case OBJ_LANTERN:
+			outW = w * 0.65f; outH = w * 0.27f; outStrength = 0.6f;
+			break;
+
+		case OBJ_REED:
+		case OBJ_RUBBLE:
+			outStrength = 0.0f;   // 그림자 없음
+			break;
+
+		default:
+			break;
+		}
+	}
 }
 
 float Draw::LightAt(float wx, float wy, float px, float py)
@@ -29,18 +90,140 @@ float Draw::LightAt(float wx, float wy, float px, float py)
 
 void Draw::SoftShadow(Renderer& r, float sx, float sy, float w, float h, float strength)
 {
+	if (strength <= 0.0f)
+		return;
+
 	// 세 겹으로 나눠 바깥쪽을 옅게 — 단일 마름모보다 훨씬 부드럽다.
-	r.DrawDiamond(sx, sy, w * 1.35f, h * 1.35f, 0.0f, 0.0f, 0.0f, strength * 0.16f);
-	r.DrawDiamond(sx, sy, w * 1.00f, h * 1.00f, 0.0f, 0.0f, 0.0f, strength * 0.26f);
-	r.DrawDiamond(sx, sy, w * 0.66f, h * 0.66f, 0.0f, 0.0f, 0.0f, strength * 0.34f);
+	r.DrawEllipse(sx, sy, w * 1.35f, h * 1.35f, 0.0f, 0.0f, 0.0f, strength * 0.14f);
+	r.DrawEllipse(sx, sy, w * 1.00f, h * 1.00f, 0.0f, 0.0f, 0.0f, strength * 0.24f);
+	r.DrawEllipse(sx, sy, w * 0.66f, h * 0.66f, 0.0f, 0.0f, 0.0f, strength * 0.32f);
 }
 
 void Draw::LightPool(Renderer& r, float sx, float sy, float w,
                      float cr, float cg, float cb, float intensity)
 {
-	r.DrawDiamond(sx, sy, w * 2.10f, w * 1.05f, cr, cg, cb, intensity * 0.30f);
-	r.DrawDiamond(sx, sy, w * 1.40f, w * 0.70f, cr, cg, cb, intensity * 0.45f);
-	r.DrawDiamond(sx, sy, w * 0.78f, w * 0.39f, cr, cg, cb, intensity * 0.70f);
+	r.DrawEllipse(sx, sy, w * 2.10f, w * 1.05f, cr, cg, cb, intensity * 0.30f);
+	r.DrawEllipse(sx, sy, w * 1.40f, w * 0.70f, cr, cg, cb, intensity * 0.45f);
+	r.DrawEllipse(sx, sy, w * 0.78f, w * 0.39f, cr, cg, cb, intensity * 0.70f);
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────
+//  모델
+// ─────────────────────────────────────────────────────────────────────────
+
+void Draw::InitInstance(ModelInstance& inst, float sx, float sy, float w, float h, float lit)
+{
+	inst.sx     = sx;
+	inst.sy     = sy;
+	inst.w      = w;
+	inst.h      = h;
+	inst.lit    = lit;
+	inst.tint   = 1.0f;
+	inst.alpha  = 1.0f;
+	inst.facing = 1;
+
+	inst.cloak = 0;
+	inst.skin  = 0;
+	inst.hair  = 0;
+	inst.body  = 0;
+
+	for (int i = 0; i < ANIM_SLOT_COUNT; ++i)
+		inst.anim[i] = 0.0f;
+}
+
+void Draw::SetPropAnim(ModelInstance& inst, float time, float seed)
+{
+	inst.anim[ANIM_SWAY]    = sinf(time * 0.70f + seed);
+	inst.anim[ANIM_FLICKER] = sinf(time * 3.10f + seed);
+}
+
+void Draw::SetCreatureAnim(ModelInstance& inst, float time, float seed,
+                           float walkPhase, float walkAmount)
+{
+	float swing = sinf(walkPhase) * walkAmount;
+
+	// 걸을 땐 상하로 튀고, 서 있을 땐 숨만 쉰다.
+	float breath = (1.0f - walkAmount) * sinf(time * 1.5f + seed) * 0.6f
+	             - walkAmount * fabsf(cosf(walkPhase)) * 1.6f;
+
+	inst.anim[ANIM_SWAY]    = sinf(time * 0.70f + seed);
+	inst.anim[ANIM_BREATH]  = breath;
+	inst.anim[ANIM_LEG_A]   =  swing;
+	inst.anim[ANIM_LEG_B]   = -swing;
+	inst.anim[ANIM_ARM_A]   = -swing;
+	inst.anim[ANIM_ARM_B]   =  swing;
+	inst.anim[ANIM_HEAD]    =  swing * 0.35f;
+	inst.anim[ANIM_FLICKER] = sinf(time * 3.10f + seed);
+}
+
+void Draw::Model(Renderer& r, const ModelLibrary& lib, int id, const ModelInstance& in)
+{
+	if (id < 0)
+		return;
+
+	const std::vector<ModelPart>& parts = lib.Parts(id);
+
+	for (size_t i = 0; i < parts.size(); ++i)
+	{
+		const ModelPart& p = parts[i];
+
+		float px = in.sx + p.ox * in.w * (float)in.facing;
+		float py = in.sy + p.oy * in.h;
+		float pw = p.w * in.w;
+		float ph = p.h * in.h;
+
+		float bright = in.lit * in.tint;
+
+		// 애니메이션 슬롯 — 축이 슬롯마다 다르다.
+		if (p.anim != ANIM_NONE)
+		{
+			float v = in.anim[p.anim];
+
+			if (p.anim == ANIM_FLICKER)
+				bright *= 0.86f + 0.14f * v;
+			else if (p.anim == ANIM_BREATH)
+				py += v * p.amp * in.w;
+			else
+				px += v * p.amp * in.w * (float)in.facing;
+		}
+
+		// 색 슬롯 — 파츠가 든 색은 슬롯 색에 곱해지는 음영값으로 쓴다.
+		float cr = p.r;
+		float cg = p.g;
+		float cb = p.b;
+
+		const float* slot = 0;
+
+		switch (p.colorSlot)
+		{
+		case COLOR_CLOAK: slot = in.cloak; break;
+		case COLOR_SKIN:  slot = in.skin;  break;
+		case COLOR_HAIR:  slot = in.hair;  break;
+		case COLOR_BODY:  slot = in.body;  break;
+		default:          break;
+		}
+
+		if (slot != 0)
+		{
+			cr = slot[0] * p.r;
+			cg = slot[1] * p.g;
+			cb = slot[2] * p.b;
+		}
+
+		cr *= bright;
+		cg *= bright;
+		cb *= bright;
+
+		float alpha = p.a * in.alpha;
+
+		if (p.shape == SHAPE_QUAD)
+			r.DrawQuad(px - pw * 0.5f, py - ph * 0.5f, pw, ph, cr, cg, cb, alpha);
+		else if (p.shape == SHAPE_DIAMOND)
+			r.DrawDiamond(px, py, pw, ph, cr, cg, cb, alpha);
+		else
+			r.DrawEllipse(px, py, pw, ph, cr, cg, cb, alpha);
+	}
 }
 
 
@@ -69,8 +252,8 @@ void Draw::Tiles(Renderer& r, const World& world, float ox, float oy,
 		TileType t = world.Tile(tx, ty);
 		float    v = world.Variation(tx, ty);
 
-		// 한 줄로 끝나는 case 가 이어질 때는 표처럼 붙여 쓴다.
 		float cr, cg, cb;
+
 		switch (t)
 		{
 		case TILE_MEADOW:  cr = 0.176f; cg = 0.229f; cb = 0.133f; break;
@@ -78,46 +261,28 @@ void Draw::Tiles(Renderer& r, const World& world, float ox, float oy,
 		case TILE_SAND:    cr = 0.274f; cg = 0.245f; cb = 0.183f; break;
 		case TILE_SHALLOW: cr = 0.102f; cg = 0.216f; cb = 0.224f; break;
 		case TILE_WATER:   cr = 0.050f; cg = 0.124f; cb = 0.150f; break;
+		case TILE_FLOOR:   cr = 0.152f; cg = 0.148f; cb = 0.156f; break;
+		case TILE_WALL:    cr = 0.058f; cg = 0.056f; cb = 0.062f; break;
 		case TILE_GRASS:
 		default:           cr = 0.141f; cg = 0.196f; cb = 0.126f; break;
 		}
 
-		float shade = 0.88f + v * 0.24f;
+		float lit = Draw::LightAt(wx, wy, px, py) * (0.88f + v * 0.24f);
 
-		// 수면 일렁임
+		// 물결은 셰이더가 그린다 — CPU 에서 타일마다 sin 을 돌리지 않는다.
 		if (t == TILE_WATER || t == TILE_SHALLOW)
-			shade += sinf(time * 1.3f + (float)tx * 0.62f + (float)ty * 0.48f) * 0.11f;
+		{
+			float depth = (t == TILE_WATER) ? 1.0f : 0.0f;
 
-		float lit = Draw::LightAt(wx, wy, px, py) * shade;
+			r.DrawWater(sx, sy, TILE_W, TILE_H, wx, wy, depth, lit, time,
+			            cr * lit, cg * lit, cb * lit);
+			continue;
+		}
 
 		r.DrawDiamond(sx, sy, TILE_W, TILE_H, cr * lit, cg * lit, cb * lit, 1.0f);
 
 		// ── 지면 디테일 ──
-		if (t == TILE_WATER)
-		{
-			// 흐르는 물결선
-			float w = sinf(time * 0.9f + (float)tx * 0.5f + (float)ty * 0.9f);
-
-			if (w > 0.72f)
-			{
-				float a = (w - 0.72f) * 1.6f;
-
-				r.DrawDiamond(sx, sy - 2.0f, TILE_W * 0.52f, TILE_H * 0.22f,
-				              0.42f * lit, 0.72f * lit, 0.76f * lit, a * 0.30f);
-			}
-		}
-		else if (t == TILE_SHALLOW)
-		{
-			// 물가 거품
-			float f = sinf(time * 1.9f + v * 12.0f);
-
-			if (f > 0.55f)
-			{
-				r.DrawDiamond(sx, sy, TILE_W * 0.66f, TILE_H * 0.30f,
-				              0.62f * lit, 0.80f * lit, 0.80f * lit, (f - 0.55f) * 0.55f);
-			}
-		}
-		else if (t == TILE_PATH)
+		if (t == TILE_PATH)
 		{
 			// 자갈
 			if (v > 0.86f)
@@ -138,7 +303,21 @@ void Draw::Tiles(Renderer& r, const World& world, float ox, float oy,
 				           0.36f * lit, 0.33f * lit, 0.26f * lit, 0.8f);
 			}
 		}
-		else
+		else if (t == TILE_FLOOR)
+		{
+			// 깨진 포석
+			if (v > 0.78f)
+			{
+				r.DrawDiamond(sx, sy, TILE_W * 0.42f, TILE_H * 0.42f,
+				              0.190f * lit, 0.186f * lit, 0.196f * lit, 0.8f);
+			}
+			else if (v < 0.16f)
+			{
+				r.DrawDiamond(sx, sy, TILE_W * 0.60f, TILE_H * 0.60f,
+				              0.112f * lit, 0.110f * lit, 0.118f * lit, 0.7f);
+			}
+		}
+		else if (t == TILE_GRASS || t == TILE_MEADOW)
 		{
 			// 풀포기 — 바람에 같이 눕는다
 			if (v > 0.80f)
@@ -149,9 +328,9 @@ void Draw::Tiles(Renderer& r, const World& world, float ox, float oy,
 				float gg = 0.192f * lit;
 				float gb = 0.110f * lit;
 
-				r.DrawQuad(sx - 7.0f + sway,       sy - 7.0f, 1.8f, 7.0f, gr, gg, gb, 0.9f);
+				r.DrawQuad(sx - 7.0f + sway,        sy - 7.0f, 1.8f, 7.0f, gr, gg, gb, 0.9f);
 				r.DrawQuad(sx - 1.0f + sway * 1.2f, sy - 9.0f, 1.8f, 9.0f, gr, gg, gb, 0.9f);
-				r.DrawQuad(sx + 5.0f + sway,       sy - 6.0f, 1.8f, 6.0f, gr, gg, gb, 0.9f);
+				r.DrawQuad(sx + 5.0f + sway,        sy - 6.0f, 1.8f, 6.0f, gr, gg, gb, 0.9f);
 			}
 		}
 	}
@@ -162,796 +341,206 @@ void Draw::Tiles(Renderer& r, const World& world, float ox, float oy,
 //  오브젝트
 // ─────────────────────────────────────────────────────────────────────────
 
-namespace
+void Draw::Object(Renderer& r, const ModelLibrary& lib, const WorldObject& o,
+                  float sx, float sy, float lit, float time,
+                  bool sigilTaken, bool sigilHighlight)
 {
-	// 벽에 세로 널판 결을 넣는다.
-	void Planks(Renderer& r, float x, float y, float w, float h,
-	            float br, float bg, float bb, int count)
+	// 벽은 타일 격자에 붙은 지형이라 모델이 아니라 직접 그린다.
+	if (o.type == OBJ_WALL)
 	{
-		for (int i = 1; i < count; ++i)
-		{
-			float px = x + w * ((float)i / (float)count);
+		float h   = o.height;
+		float top = sy - h;
 
-			r.DrawQuad(px, y + h * 0.06f, 1.2f, h * 0.88f,
-			           br * 0.72f, bg * 0.72f, bb * 0.72f, 0.55f);
-		}
+		r.DrawQuad(sx - TILE_W * 0.5f, top, TILE_W, h + TILE_H * 0.5f,
+		           0.104f * lit, 0.100f * lit, 0.110f * lit);
+
+		r.DrawQuad(sx, top, TILE_W * 0.5f, h + TILE_H * 0.5f,
+		           0.078f * lit, 0.075f * lit, 0.084f * lit);
+
+		r.DrawDiamond(sx, top, TILE_W, TILE_H,
+		              0.156f * lit, 0.152f * lit, 0.164f * lit);
+
+		return;
 	}
 
-	// 아이소메트릭 지붕을 기와 줄로 겹쳐 그린다.
-	void RoofTiles(Renderer& r, float cx, float cy, float w, float h,
-	               float rr, float rg, float rb, int rows)
-	{
-		for (int i = 0; i < rows; ++i)
-		{
-			float t     = (float)i / (float)rows;
-			float scale = 1.0f - t * 0.78f;
-			float shade = 0.80f + t * 0.42f;
+	int id = ModelForObject(o.type);
 
-			r.DrawDiamond(cx, cy - h * 0.34f * t, w * scale, h * scale,
-			              rr * shade, rg * shade, rb * shade, 1.0f);
-		}
+	if (id < 0)
+		return;
+
+	float shW, shH, shS;
+	ShadowFor(o.type, o.width, shW, shH, shS);
+	SoftShadow(r, sx, sy, shW, shH, shS);
+
+	ModelInstance inst;
+	InitInstance(inst, sx, sy, o.width, o.height, lit);
+	SetPropAnim(inst, time, (float)o.variant * 0.11f);
+
+	// 개체마다 색을 조금씩 흔들어 복제 티를 없앤다.
+	inst.tint = 0.92f + Var(o.variant, 1) * 0.16f;
+
+	Model(r, lib, id, inst);
+
+	// ── 모델로 표현하지 않는 동적 요소 ──
+	if (o.type == OBJ_CAMPFIRE)
+	{
+		// 불꽃은 셰이더가 그린다.
+		r.DrawFlame(sx, sy - o.height * 0.14f, o.width * 0.80f, o.height * 1.25f,
+		            time, (float)o.variant * 0.37f, 1.0f);
 	}
-
-	void Chimney(Renderer& r, float sx, float sy, float w, float h,
-	             float lit, float time, int variant)
-	{
-		float cx = sx + w * 0.30f;
-		float cy = sy - h * 1.02f;
-
-		r.DrawQuad(cx - w * 0.06f, cy, w * 0.12f, h * 0.24f,
-		           0.190f * lit, 0.165f * lit, 0.145f * lit);
-
-		// 굴뚝 연기 — 세 덩이가 시차를 두고 올라간다
-		for (int i = 0; i < 3; ++i)
-		{
-			float phase = fmodf(time * 0.26f + (float)i * 0.33f + Var(variant, i), 1.0f);
-			float rise  = phase * 40.0f;
-			float a     = (1.0f - phase) * 0.16f;
-			float size  = 6.0f + phase * 12.0f;
-
-			r.DrawDiamond(cx + sinf(phase * 3.0f + (float)i) * 5.0f, cy - rise,
-			              size, size * 0.6f,
-			              0.55f, 0.55f, 0.58f, a);
-		}
-	}
-
-	void Windows(Renderer& r, float sx, float sy, float w, float wallH,
-	             float time, int variant, int count)
-	{
-		float flick = 0.86f + 0.14f * sinf(time * 3.1f + (float)variant * 0.7f);
-
-		float ww = w * 0.13f;
-		float wh = wallH * 0.30f;
-		float wy = sy - wallH * 0.72f;
-
-		const float offsets3[3] = { -0.34f, 0.04f, 0.24f };
-		const float offsets2[2] = { -0.32f, 0.19f };
-
-		for (int i = 0; i < count; ++i)
-		{
-			float ox = (count >= 3) ? offsets3[i] : offsets2[i];
-			float x  = sx + w * ox;
-
-			// 창틀
-			r.DrawQuad(x - 1.5f, wy - 1.5f, ww + 3.0f, wh + 3.0f,
-			           0.13f, 0.10f, 0.08f, 0.9f);
-
-			// 불빛
-			r.DrawQuad(x, wy, ww, wh,
-			           0.99f * flick, 0.76f * flick, 0.40f * flick);
-
-			// 창살
-			r.DrawQuad(x + ww * 0.45f, wy, 1.2f, wh,
-			           0.20f, 0.14f, 0.09f, 0.8f);
-		}
-	}
-
-	void Building(Renderer& r, const WorldObject& o, float sx, float sy,
-	              float lit, float time, int windowCount, bool steeple)
-	{
-		float w     = o.width;
-		float h     = o.height;
-		float v     = Var(o.variant, 1);
-		float wallH = h * 0.52f;
-
-		float wr = (0.228f + v * 0.030f) * lit;
-		float wg = (0.192f + v * 0.022f) * lit;
-		float wb = 0.152f * lit;
-
-		float rr = (0.300f + v * 0.075f) * lit;
-		float rg = (0.148f + v * 0.030f) * lit;
-		float rb = 0.118f * lit;
-
-		Draw::SoftShadow(r, sx, sy, w * 1.05f, w * 0.50f, 1.0f);
-
-		// 기단
-		r.DrawQuad(sx - w * 0.52f, sy - h * 0.06f, w * 1.04f, h * 0.07f,
-		           0.135f * lit, 0.130f * lit, 0.125f * lit);
-
-		// 벽 — 정면
-		r.DrawQuad(sx - w * 0.5f, sy - wallH, w, wallH, wr, wg, wb);
-		Planks(r, sx - w * 0.5f, sy - wallH, w, wallH, wr, wg, wb, 7);
-
-		// 측면 — 아이소메트릭에서 모서리가 보이도록 한쪽을 어둡게
-		r.DrawQuad(sx + w * 0.34f, sy - wallH * 0.94f, w * 0.16f, wallH * 0.94f,
-		           wr * 0.62f, wg * 0.62f, wb * 0.62f);
-
-		// 처마 그늘
-		r.DrawQuad(sx - w * 0.5f, sy - wallH, w, h * 0.045f,
-		           wr * 0.45f, wg * 0.45f, wb * 0.45f, 0.85f);
-
-		// 지붕
-		RoofTiles(r, sx, sy - wallH, w * 1.26f, w * 0.60f, rr, rg, rb, 5);
-
-		// 용마루 하이라이트
-		r.DrawDiamond(sx, sy - wallH - w * 0.20f, w * 0.34f, w * 0.16f,
-		              rr * 1.45f, rg * 1.45f, rb * 1.45f, 0.7f);
-
-		// 문
-		r.DrawQuad(sx - w * 0.10f, sy - h * 0.31f, w * 0.20f, h * 0.31f,
-		           0.075f * lit, 0.058f * lit, 0.048f * lit);
-
-		r.DrawQuad(sx - w * 0.11f, sy - h * 0.32f, w * 0.22f, h * 0.02f,
-		           0.150f * lit, 0.118f * lit, 0.088f * lit);
-
-		Windows(r, sx, sy, w, wallH, time, o.variant, windowCount);
-
-		if (steeple)
-		{
-			// 첨탑
-			r.DrawQuad(sx - w * 0.09f, sy - h * 1.06f, w * 0.18f, h * 0.42f,
-			           wr * 0.92f, wg * 0.92f, wb * 0.92f);
-
-			r.DrawDiamond(sx, sy - h * 1.06f, w * 0.30f, w * 0.16f,
-			              rr * 1.1f, rg * 1.1f, rb * 1.1f);
-
-			r.DrawQuad(sx - 1.5f, sy - h * 1.22f, 3.0f, h * 0.10f,
-			           0.42f * lit, 0.38f * lit, 0.30f * lit);
-
-			// 둥근 창
-			r.DrawDiamond(sx, sy - wallH * 1.02f, w * 0.16f, w * 0.16f,
-			              0.95f, 0.72f, 0.38f, 0.9f);
-		}
-		else
-		{
-			Chimney(r, sx, sy, w, h, lit, time, o.variant);
-		}
-	}
-
-	void Canopy(Renderer& r, float sx, float sy, float w, float h,
-	            float lit, float time, int variant, bool pine)
-	{
-		float sway = sinf(time * 0.7f + (float)variant * 0.11f) * 2.6f;
-		float v    = Var(variant, 3);
-
-		// 줄기 — 아래가 굵다
-		float tr = 0.112f * lit;
-		float tg = 0.084f * lit;
-		float tb = 0.064f * lit;
-
-		r.DrawQuad(sx - w * 0.085f, sy - h * 0.40f, w * 0.17f, h * 0.40f, tr, tg, tb);
-		r.DrawQuad(sx - w * 0.055f, sy - h * 0.52f, w * 0.11f, h * 0.16f, tr, tg, tb);
-
-		if (pine)
-		{
-			// 침엽수 — 좁고 층이 뚜렷하다
-			float cr = (0.062f + v * 0.020f) * lit;
-			float cg = (0.132f + v * 0.040f) * lit;
-			float cb = (0.098f + v * 0.024f) * lit;
-
-			for (int i = 0; i < 4; ++i)
-			{
-				float t     = (float)i / 3.0f;
-				float yy    = sy - h * (0.36f + t * 0.50f);
-				float ww    = w * (1.00f - t * 0.58f);
-				float shade = 1.0f + t * 0.42f;
-
-				r.DrawDiamond(sx + sway * (0.3f + t * 0.7f), yy, ww, ww * 0.62f,
-				              cr * shade, cg * shade, cb * shade);
-			}
-
-			// 꼭대기 하이라이트
-			r.DrawDiamond(sx + sway, sy - h * 0.90f, w * 0.22f, w * 0.20f,
-			              0.16f * lit, 0.30f * lit, 0.22f * lit);
-		}
-		else
-		{
-			// 활엽수 — 덩어리 몇 개를 겹쳐 실루엣을 흐트러뜨린다
-			float cr = (0.082f + v * 0.030f) * lit;
-			float cg = (0.168f + v * 0.058f) * lit;
-			float cb = (0.096f + v * 0.030f) * lit;
-
-			r.DrawDiamond(sx + sway * 0.4f, sy - h * 0.42f, w * 1.06f, w * 0.62f,
-			              cr, cg, cb);
-
-			r.DrawDiamond(sx + sway * 0.6f - w * 0.22f, sy - h * 0.58f, w * 0.70f, w * 0.46f,
-			              cr * 1.08f, cg * 1.08f, cb * 1.08f);
-
-			r.DrawDiamond(sx + sway * 0.8f + w * 0.20f, sy - h * 0.62f, w * 0.66f, w * 0.44f,
-			              cr * 1.16f, cg * 1.16f, cb * 1.16f);
-
-			r.DrawDiamond(sx + sway, sy - h * 0.78f, w * 0.62f, w * 0.40f,
-			              cr * 1.30f, cg * 1.30f, cb * 1.30f);
-
-			// 달빛 받는 면
-			r.DrawDiamond(sx + sway + w * 0.14f, sy - h * 0.82f, w * 0.30f, w * 0.20f,
-			              cr * 1.55f, cg * 1.55f, cb * 1.55f, 0.75f);
-		}
-	}
-}
-
-void Draw::Object(Renderer& r, const WorldObject& o, float sx, float sy,
-                  float lit, float time, bool sigilTaken, bool sigilHighlight)
-{
-	float w = o.width;
-	float h = o.height;
-	float v = Var(o.variant, 1);
-
-	switch (o.type)
-	{
-	case OBJ_TREE:
-	case OBJ_PINE:
-		SoftShadow(r, sx, sy, w * 0.80f, w * 0.38f, 0.95f);
-		Canopy(r, sx, sy, w, h, lit, time, o.variant, o.type == OBJ_PINE);
-
-		break;
-
-	case OBJ_BUSH:
-	{
-		float sway = sinf(time * 1.0f + (float)o.variant * 0.2f) * 1.6f;
-
-		float cr = (0.088f + v * 0.026f) * lit;
-		float cg = (0.156f + v * 0.048f) * lit;
-		float cb = (0.094f + v * 0.026f) * lit;
-
-		SoftShadow(r, sx, sy, w * 0.8f, w * 0.36f, 0.8f);
-
-		r.DrawDiamond(sx - w * 0.16f + sway, sy - h * 0.30f, w * 0.66f, w * 0.44f,
-		              cr, cg, cb);
-
-		r.DrawDiamond(sx + w * 0.18f + sway, sy - h * 0.34f, w * 0.60f, w * 0.40f,
-		              cr * 1.12f, cg * 1.12f, cb * 1.12f);
-
-		r.DrawDiamond(sx + sway, sy - h * 0.52f, w * 0.52f, w * 0.34f,
-		              cr * 1.26f, cg * 1.26f, cb * 1.26f);
-
-		break;
-	}
-
-	case OBJ_STUMP:
-		SoftShadow(r, sx, sy, w * 0.8f, w * 0.38f, 0.85f);
-
-		r.DrawQuad(sx - w * 0.28f, sy - h * 0.70f, w * 0.56f, h * 0.70f,
-		           0.128f * lit, 0.096f * lit, 0.072f * lit);
-
-		// 잘린 단면 — 나이테를 두 겹으로 흉내낸다
-		r.DrawDiamond(sx, sy - h * 0.70f, w * 0.60f, w * 0.30f,
-		              0.176f * lit, 0.138f * lit, 0.100f * lit);
-
-		r.DrawDiamond(sx, sy - h * 0.70f, w * 0.34f, w * 0.17f,
-		              0.146f * lit, 0.112f * lit, 0.082f * lit);
-
-		break;
-
-	case OBJ_ROCK:
-		SoftShadow(r, sx, sy, w * 0.9f, w * 0.42f, 0.9f);
-
-		r.DrawDiamond(sx, sy - h * 0.24f, w, h * 1.15f,
-		              0.186f * lit, 0.192f * lit, 0.204f * lit);
-
-		r.DrawDiamond(sx - w * 0.08f, sy - h * 0.46f, w * 0.62f, h * 0.70f,
-		              0.252f * lit, 0.258f * lit, 0.272f * lit);
-
-		r.DrawDiamond(sx - w * 0.14f, sy - h * 0.56f, w * 0.28f, h * 0.32f,
-		              0.320f * lit, 0.326f * lit, 0.342f * lit, 0.85f);
-
-		break;
-
-	// 건물은 창 개수와 첨탑 유무만 다르다.
-	case OBJ_HOUSE:  Building(r, o, sx, sy, lit, time, 2, false); break;
-	case OBJ_INN:    Building(r, o, sx, sy, lit, time, 3, false); break;
-	case OBJ_CHAPEL: Building(r, o, sx, sy, lit, time, 2, true);  break;
-
-	case OBJ_FENCE:
-		SoftShadow(r, sx, sy, w * 0.7f, w * 0.28f, 0.6f);
-
-		// 기둥 둘
-		r.DrawQuad(sx - w * 0.40f, sy - h * 0.88f, w * 0.13f, h * 0.88f,
-		           0.180f * lit, 0.146f * lit, 0.102f * lit);
-
-		r.DrawQuad(sx + w * 0.27f, sy - h * 0.88f, w * 0.13f, h * 0.88f,
-		           0.180f * lit, 0.146f * lit, 0.102f * lit);
-
-		// 가로대 둘
-		r.DrawQuad(sx - w * 0.40f, sy - h * 0.70f, w * 0.80f, h * 0.13f,
-		           0.204f * lit, 0.166f * lit, 0.116f * lit);
-
-		r.DrawQuad(sx - w * 0.40f, sy - h * 0.42f, w * 0.80f, h * 0.11f,
-		           0.192f * lit, 0.156f * lit, 0.110f * lit);
-
-		break;
-
-	case OBJ_WELL:
-		SoftShadow(r, sx, sy, w * 1.0f, w * 0.46f, 1.0f);
-
-		// 돌 몸통
-		r.DrawQuad(sx - w * 0.34f, sy - h * 0.44f, w * 0.68f, h * 0.44f,
-		           0.208f * lit, 0.208f * lit, 0.214f * lit);
-
-		// 돌 줄눈
-		r.DrawQuad(sx - w * 0.34f, sy - h * 0.30f, w * 0.68f, 1.4f,
-		           0.145f * lit, 0.145f * lit, 0.150f * lit, 0.8f);
-
-		r.DrawQuad(sx - w * 0.34f, sy - h * 0.16f, w * 0.68f, 1.4f,
-		           0.145f * lit, 0.145f * lit, 0.150f * lit, 0.8f);
-
-		// 수면
-		r.DrawDiamond(sx, sy - h * 0.44f, w * 0.70f, w * 0.34f,
-		              0.038f * lit, 0.078f * lit, 0.094f * lit);
-
-		r.DrawDiamond(sx, sy - h * 0.44f, w * 0.44f, w * 0.20f,
-		              0.070f * lit, 0.135f * lit, 0.150f * lit, 0.7f);
-
-		// 지붕 기둥
-		r.DrawQuad(sx - w * 0.30f, sy - h * 1.08f, w * 0.08f, h * 0.64f,
-		           0.172f * lit, 0.138f * lit, 0.098f * lit);
-
-		r.DrawQuad(sx + w * 0.22f, sy - h * 1.08f, w * 0.08f, h * 0.64f,
-		           0.172f * lit, 0.138f * lit, 0.098f * lit);
-
-		RoofTiles(r, sx, sy - h * 1.08f, w * 1.08f, w * 0.46f,
-		          0.248f * lit, 0.128f * lit, 0.100f * lit, 3);
-
-		break;
-
-	case OBJ_BOARD:
-		SoftShadow(r, sx, sy, w * 0.8f, w * 0.34f, 0.8f);
-
-		// 기둥 둘
-		r.DrawQuad(sx - w * 0.30f, sy - h * 0.56f, w * 0.09f, h * 0.56f,
-		           0.148f * lit, 0.118f * lit, 0.084f * lit);
-
-		r.DrawQuad(sx + w * 0.21f, sy - h * 0.56f, w * 0.09f, h * 0.56f,
-		           0.148f * lit, 0.118f * lit, 0.084f * lit);
-
-		// 판
-		r.DrawQuad(sx - w * 0.44f, sy - h * 1.02f, w * 0.88f, h * 0.50f,
-		           0.228f * lit, 0.178f * lit, 0.118f * lit);
-
-		Planks(r, sx - w * 0.44f, sy - h * 1.02f, w * 0.88f, h * 0.50f,
-		       0.228f * lit, 0.178f * lit, 0.118f * lit, 4);
-
-		// 붙어 있는 의뢰서 — 한 장뿐이다
-		r.DrawQuad(sx - w * 0.17f, sy - h * 0.92f, w * 0.26f, h * 0.28f,
-		           0.74f * lit, 0.70f * lit, 0.56f * lit);
-
-		r.DrawQuad(sx - w * 0.14f, sy - h * 0.86f, w * 0.20f, 1.2f,
-		           0.35f * lit, 0.31f * lit, 0.24f * lit, 0.8f);
-
-		break;
-
-	case OBJ_CAMPFIRE:
-	{
-		SoftShadow(r, sx, sy, w * 0.9f, w * 0.42f, 0.7f);
-
-		// 돌 테두리
-		for (int i = 0; i < 6; ++i)
-		{
-			float a  = (float)i * 1.047f;
-			float rx = cosf(a) * w * 0.36f;
-			float ry = sinf(a) * w * 0.18f;
-
-			r.DrawDiamond(sx + rx, sy + ry, w * 0.22f, w * 0.12f,
-			              0.180f * lit, 0.180f * lit, 0.186f * lit);
-		}
-
-		// 장작
-		r.DrawQuad(sx - w * 0.26f, sy - h * 0.14f, w * 0.52f, h * 0.10f,
-		           0.130f * lit, 0.098f * lit, 0.070f * lit);
-
-		r.DrawQuad(sx - w * 0.10f, sy - h * 0.20f, w * 0.20f, h * 0.16f,
-		           0.115f * lit, 0.086f * lit, 0.062f * lit);
-
-		// 불꽃 — 세 갈래가 서로 다른 주기로 흔들린다
-		for (int i = 0; i < 3; ++i)
-		{
-			float ph  = time * (3.4f + (float)i * 0.8f) + (float)i * 2.1f;
-			float wob = sinf(ph) * w * 0.10f;
-			float hh  = h * (0.44f + 0.16f * sinf(ph * 1.7f)) * (1.0f - (float)i * 0.16f);
-			float ww  = w * (0.30f - (float)i * 0.05f);
-
-			r.DrawDiamond(sx + wob, sy - h * 0.16f - hh * 0.5f, ww, hh,
-			              1.0f, 0.52f + (float)i * 0.10f, 0.16f, 0.72f);
-		}
-
-		// 심지 — 블룸이 물릴 만큼 밝게
-		r.DrawDiamond(sx, sy - h * 0.30f, w * 0.16f, h * 0.34f,
-		              1.0f, 0.92f, 0.66f, 0.9f);
-
-		break;
-	}
-
-	case OBJ_LANTERN:
-	{
-		float flick = 0.85f + 0.15f * sinf(time * 5.0f + (float)o.variant);
-
-		SoftShadow(r, sx, sy, w * 0.6f, w * 0.26f, 0.6f);
-
-		// 기둥과 가로대
-		r.DrawQuad(sx - w * 0.07f, sy - h * 0.88f, w * 0.14f, h * 0.88f,
-		           0.128f * lit, 0.108f * lit, 0.082f * lit);
-
-		r.DrawQuad(sx - w * 0.06f, sy - h * 0.92f, w * 0.30f, w * 0.09f,
-		           0.128f * lit, 0.108f * lit, 0.082f * lit);
-
-		// 등롱
-		r.DrawQuad(sx + w * 0.10f, sy - h * 0.86f, w * 0.22f, h * 0.22f,
-		           0.16f, 0.13f, 0.09f);
-
-		r.DrawQuad(sx + w * 0.12f, sy - h * 0.84f, w * 0.18f, h * 0.18f,
-		           1.0f * flick, 0.78f * flick, 0.40f * flick);
-
-		break;
-	}
-
-	case OBJ_SIGIL:
+	else if (o.type == OBJ_SIGIL)
 	{
 		float pulse = 0.5f + 0.5f * sinf(time * 1.9f);
 		float alive = sigilTaken ? 0.30f : 1.0f;
 		float boost = sigilHighlight ? 1.6f : 1.0f;
 
-		float ax = sx;
-		float ay = sy - h * 0.54f;
-
-		SoftShadow(r, sx, sy, w * 0.95f, w * 0.44f, 1.0f);
-
-		r.DrawDiamond(sx, sy, w * 0.82f, w * 0.38f,
-		              0.150f * lit, 0.156f * lit, 0.166f * lit);
-
-		// 기울어 박힌 비석
-		r.DrawQuad(sx - w * 0.27f, sy - h * 0.92f, w * 0.54f, h * 0.92f,
-		           0.170f * lit, 0.180f * lit, 0.196f * lit);
-
-		r.DrawQuad(sx + w * 0.16f, sy - h * 0.88f, w * 0.11f, h * 0.88f,
-		           0.118f * lit, 0.126f * lit, 0.140f * lit);
-
-		// 이끼
-		r.DrawQuad(sx - w * 0.27f, sy - h * 0.22f, w * 0.54f, h * 0.10f,
-		           0.100f * lit, 0.145f * lit, 0.098f * lit, 0.7f);
-
-		// 소용돌이 — 동심원 세 겹, 젖어 있다
-		r.DrawDiamond(ax, ay, w * 0.40f, w * 0.40f,
-		              0.18f, 0.80f, 0.74f, (0.16f + pulse * 0.14f) * alive * boost);
-
-		r.DrawDiamond(ax, ay, w * 0.27f, w * 0.27f,
-		              0.24f, 0.88f, 0.80f, (0.26f + pulse * 0.22f) * alive * boost);
-
-		r.DrawDiamond(ax, ay, w * 0.13f, w * 0.13f,
-		              0.62f, 1.00f, 0.94f, (0.40f + pulse * 0.34f) * alive * boost);
-
-		break;
-	}
-
-	case OBJ_REED:
-	{
-		float sway = sinf(time * 1.25f + (float)o.variant * 0.2f) * 3.4f;
-
-		for (int i = 0; i < 4; ++i)
-		{
-			float off = ((float)i - 1.5f) * w * 0.24f;
-			float hh  = h * (0.62f + Var(o.variant, i) * 0.42f);
-
-			r.DrawQuad(sx + off + sway * (0.3f + (float)i * 0.18f), sy - hh,
-			           w * 0.10f, hh,
-			           0.098f * lit, 0.168f * lit, 0.120f * lit);
-		}
-
-		break;
-	}
-
-	case OBJ_CRATE:
-		SoftShadow(r, sx, sy, w * 0.85f, w * 0.40f, 0.9f);
-
-		r.DrawQuad(sx - w * 0.40f, sy - h * 0.82f, w * 0.80f, h * 0.82f,
-		           0.196f * lit, 0.154f * lit, 0.106f * lit);
-
-		Planks(r, sx - w * 0.40f, sy - h * 0.82f, w * 0.80f, h * 0.82f,
-		       0.196f * lit, 0.154f * lit, 0.106f * lit, 3);
-
-		// 테두리 쇠띠
-		r.DrawQuad(sx - w * 0.40f, sy - h * 0.52f, w * 0.80f, 1.6f,
-		           0.130f * lit, 0.102f * lit, 0.070f * lit, 0.9f);
-
-		// 뚜껑
-		r.DrawDiamond(sx, sy - h * 0.82f, w * 0.86f, w * 0.40f,
-		              0.240f * lit, 0.192f * lit, 0.130f * lit);
-
-		break;
-
-	default:
-		break;
+		r.DrawEllipse(sx, sy - o.height * 0.54f, o.width * 0.46f, o.width * 0.46f,
+		              0.30f, 0.92f, 0.86f, (0.10f + pulse * 0.18f) * alive * boost);
 	}
 }
 
 
 // ─────────────────────────────────────────────────────────────────────────
-//  캐릭터 — 파츠를 나눠 절차적으로 애니메이션한다.
-//  실제 스프라이트 시트가 없으므로, 걷기 사이클(다리 스윙 / 팔 반대 위상 /
-//  상하 bob / 진행 방향 기울기)을 코드로 만든다.
+//  생물
 // ─────────────────────────────────────────────────────────────────────────
 
-void Draw::Person(Renderer& r, float sx, float sy, float lit, float time,
-                  const PersonLook& look, int facing,
+void Draw::Person(Renderer& r, const ModelLibrary& lib, float sx, float sy,
+                  float lit, float time, const PersonLook& look, int facing,
                   float walkPhase, float walkAmount, float idleSeed, bool lantern)
 {
 	float s = look.scale;
+	float w = 24.0f * s;
+	float h = 45.0f * s;
 
-	float swing = sinf(walkPhase);
-	float lift  = cosf(walkPhase);
-
-	// 걷는 동안엔 상하로 튀고, 서 있을 땐 숨만 쉰다.
-	float bob    = walkAmount * fabsf(lift) * 2.2f * s
-	             - (1.0f - walkAmount) * sinf(time * 1.5f + idleSeed) * 0.8f * s;
-	float lean   = (float)facing * walkAmount * 1.6f;
-	float breath = (1.0f - walkAmount) * sinf(time * 1.5f + idleSeed) * 0.6f * s;
-
-	float legH  = 12.0f * s;
-	float bodyW = 17.0f * s;
-	float bodyH = 20.0f * s;
-	float headW = 13.0f * s;
-	float headH = 12.5f * s;
-
-	float hipY  = sy - legH + bob;
-	float shldY = hipY - bodyH;
-
-	const float* cl = look.cloak;
-	const float* sk = look.skin;
-	const float* hr = look.hair;
-
-	// 그림자 — 걸을 때 살짝 줄어든다
 	SoftShadow(r, sx, sy, 24.0f * s * (1.0f - walkAmount * 0.12f), 11.0f * s, 1.0f);
 
-	// ── 다리 ──
-	float legSwing = swing * 4.2f * walkAmount;
+	ModelInstance inst;
+	InitInstance(inst, sx, sy, w, h, lit);
+	SetCreatureAnim(inst, time, idleSeed, walkPhase, walkAmount);
 
-	for (int i = 0; i < 2; ++i)
-	{
-		float dir = (i == 0) ? 1.0f : -1.0f;
-		float lx  = sx - 5.0f * s + (float)i * 6.0f * s + legSwing * dir;
-		float lh  = legH - fabsf(legSwing) * 0.18f;
+	inst.facing = facing;
+	inst.cloak  = look.cloak;
+	inst.skin   = look.skin;
+	inst.hair   = look.hair;
 
-		r.DrawQuad(lx, hipY, 4.6f * s, lh,
-		           cl[0] * lit * 0.62f, cl[1] * lit * 0.62f, cl[2] * lit * 0.62f);
+	Model(r, lib, MODEL_PERSON, inst);
 
-		// 신발
-		r.DrawQuad(lx - 0.6f * s, hipY + lh - 2.6f * s, 5.8f * s, 2.6f * s,
-		           0.075f * lit, 0.062f * lit, 0.052f * lit);
-	}
+	if (!lantern)
+		return;
 
-	// ── 망토 ──
-	float capeSway = -swing * 2.0f * walkAmount - (float)facing * 1.2f;
+	// 손에 든 랜턴 — 팔을 따라 흔들리므로 모델이 아니라 여기서 붙인다.
+	float armSwing = -sinf(walkPhase) * walkAmount * 3.4f;
+	float lx = sx + (float)facing * (17.0f * s * 0.62f) + armSwing;
+	float ly = sy - 45.0f * s * 0.28f;
 
-	r.DrawQuad(sx - bodyW * 0.54f + capeSway, shldY + 1.0f * s,
-	           bodyW * 1.08f, bodyH * 0.96f + breath,
-	           cl[0] * lit * 0.72f, cl[1] * lit * 0.72f, cl[2] * lit * 0.72f, 0.95f);
+	r.DrawQuad(lx - 1.0f * s, sy - h * 0.68f, 2.0f * s, h * 0.24f,
+	           0.14f * lit, 0.12f * lit, 0.09f * lit);
 
-	// ── 뒤쪽 팔 ──
-	float armSwing = -swing * 3.4f * walkAmount;
+	r.DrawQuad(lx - 3.2f * s, ly, 6.4f * s, 8.0f * s, 0.16f, 0.13f, 0.09f);
+	r.DrawQuad(lx - 2.4f * s, ly + 0.8f * s, 4.8f * s, 6.4f * s, 1.0f, 0.82f, 0.46f);
 
-	r.DrawQuad(sx - bodyW * 0.5f - 2.2f * s - armSwing, shldY + 2.0f * s,
-	           4.0f * s, bodyH * 0.72f,
-	           cl[0] * lit * 0.70f, cl[1] * lit * 0.70f, cl[2] * lit * 0.70f);
-
-	// ── 몸통 ──
-	r.DrawQuad(sx - bodyW * 0.5f + lean, shldY - breath, bodyW, bodyH + breath,
-	           cl[0] * lit, cl[1] * lit, cl[2] * lit);
-
-	// 어깨 그늘
-	r.DrawQuad(sx - bodyW * 0.5f + lean, shldY - breath, bodyW, bodyH * 0.24f,
-	           cl[0] * lit * 0.76f, cl[1] * lit * 0.76f, cl[2] * lit * 0.76f);
-
-	// 허리띠
-	r.DrawQuad(sx - bodyW * 0.5f + lean, hipY - bodyH * 0.22f, bodyW, 2.4f * s,
-	           0.115f * lit, 0.090f * lit, 0.068f * lit);
-
-	// ── 앞쪽 팔 ──
-	r.DrawQuad(sx + bodyW * 0.5f - 1.8f * s + armSwing, shldY + 2.0f * s,
-	           4.0f * s, bodyH * 0.72f,
-	           cl[0] * lit * 0.88f, cl[1] * lit * 0.88f, cl[2] * lit * 0.88f);
-
-	// ── 머리 ──
-	float headX = sx - headW * 0.5f + lean * 1.3f;
-	float headY = shldY - headH - breath;
-
-	r.DrawQuad(headX, headY, headW, headH,
-	           sk[0] * lit, sk[1] * lit, sk[2] * lit);
-
-	// 머리카락 / 후드
-	r.DrawQuad(headX - 0.8f * s, headY - 0.8f * s, headW + 1.6f * s, headH * 0.44f,
-	           hr[0] * lit, hr[1] * lit, hr[2] * lit);
-
-	// 뒤통수 쪽 옆머리 — 바라보는 방향의 반대편에 붙인다
-	r.DrawQuad(headX + (facing > 0 ? 0.0f : headW * 0.72f), headY,
-	           headW * 0.28f, headH * 0.78f,
-	           hr[0] * lit * 0.85f, hr[1] * lit * 0.85f, hr[2] * lit * 0.85f);
-
-	// 눈
-	r.DrawQuad(headX + headW * (facing > 0 ? 0.60f : 0.22f), headY + headH * 0.50f,
-	           2.0f * s, 2.0f * s,
-	           0.05f, 0.04f, 0.04f);
-
-	// ── 랜턴 ──
-	if (lantern)
-	{
-		float lx = sx + (float)facing * (bodyW * 0.62f) + armSwing;
-		float ly = shldY + bodyH * 0.58f;
-
-		// 손잡이
-		r.DrawQuad(lx - 1.0f * s, shldY + 2.0f * s, 2.0f * s, bodyH * 0.52f,
-		           0.14f * lit, 0.12f * lit, 0.09f * lit);
-
-		// 등피와 심지
-		r.DrawQuad(lx - 3.2f * s, ly, 6.4f * s, 8.0f * s,
-		           0.16f, 0.13f, 0.09f);
-
-		r.DrawQuad(lx - 2.4f * s, ly + 0.8f * s, 4.8f * s, 6.4f * s,
-		           1.0f, 0.82f, 0.46f);
-
-		// 번지는 빛
-		r.DrawQuad(lx - 5.0f * s, ly - 1.5f * s, 10.0f * s, 11.0f * s,
-		           1.0f, 0.78f, 0.42f, 0.20f);
-	}
+	r.DrawEllipse(lx, ly + 4.0f * s, 14.0f * s, 14.0f * s, 1.0f, 0.78f, 0.42f, 0.22f);
 }
 
-
-// ─────────────────────────────────────────────────────────────────────────
-//  야생 짐승
-// ─────────────────────────────────────────────────────────────────────────
-
-void Draw::Beast(Renderer& r, float sx, float sy, float lit, float time,
-                 int kind, int facing, float walkPhase, float walkAmount, float alert)
+void Draw::Beast(Renderer& r, const ModelLibrary& lib, float sx, float sy,
+                 float lit, float time, int kind, int facing,
+                 float walkPhase, float walkAmount, float alert)
 {
-	float f = (float)facing;
+	static const float WOLF_BODY[3] = { 0.148f, 0.148f, 0.160f };
+	static const float DEER_BODY[3] = { 0.230f, 0.156f, 0.102f };
 
-	if (kind == BEAST_CROW)
+	int   id = MODEL_CROW;
+	float w  = 22.0f;
+	float h  = 18.0f;
+
+	const float* body = 0;
+
+	if (kind == BEAST_WOLF)
 	{
-		// 까마귀 — 종종거리다 날개를 턴다
-		float hop  = fabsf(sinf(walkPhase)) * 3.0f * walkAmount;
-		float flap = sinf(time * 9.0f) * 4.0f * (0.25f + alert * 0.75f);
-
-		SoftShadow(r, sx, sy, 13.0f, 6.0f, 0.8f);
-
-		// 다리
-		r.DrawQuad(sx - 1.0f, sy - 5.0f - hop, 1.4f, 5.0f,
-		           0.28f * lit, 0.24f * lit, 0.20f * lit);
-
-		r.DrawQuad(sx + 1.4f, sy - 5.0f - hop, 1.4f, 5.0f,
-		           0.28f * lit, 0.24f * lit, 0.20f * lit);
-
-		// 몸통
-		r.DrawDiamond(sx, sy - 9.0f - hop, 15.0f, 9.0f,
-		              0.075f * lit, 0.070f * lit, 0.082f * lit);
-
-		// 날개 — 좌우가 엇갈려 퍼덕인다
-		r.DrawDiamond(sx - 5.0f, sy - 10.0f - hop - flap, 11.0f, 5.0f,
-		              0.050f * lit, 0.048f * lit, 0.060f * lit);
-
-		r.DrawDiamond(sx + 5.0f, sy - 10.0f - hop + flap, 11.0f, 5.0f,
-		              0.050f * lit, 0.048f * lit, 0.060f * lit);
-
-		// 머리 + 부리
-		r.DrawDiamond(sx + f * 6.0f, sy - 13.0f - hop, 7.0f, 6.0f,
-		              0.085f * lit, 0.080f * lit, 0.092f * lit);
-
-		r.DrawQuad(sx + f * 9.0f, sy - 14.0f - hop, 3.5f * f, 1.6f,
-		           0.42f * lit, 0.34f * lit, 0.12f * lit);
-
-		return;
+		id = MODEL_WOLF;  w = 46.0f; h = 30.0f; body = WOLF_BODY;
+	}
+	else if (kind == BEAST_DEER)
+	{
+		id = MODEL_DEER;  w = 46.0f; h = 44.0f; body = DEER_BODY;
 	}
 
-	bool  deer  = (kind == BEAST_DEER);
-	float s     = deer ? 1.15f : 1.0f;
-	float legH  = (deer ? 16.0f : 11.0f) * s;
-	float bodyW = (deer ? 30.0f : 32.0f) * s;
-	float bodyH = (deer ? 13.0f : 12.0f) * s;
+	SoftShadow(r, sx, sy, w * 0.70f, w * 0.28f, 0.95f);
 
-	float br, bg, bb;
-	if (deer)
+	ModelInstance inst;
+	InitInstance(inst, sx, sy, w, h, lit);
+	SetCreatureAnim(inst, time, (float)kind * 1.7f, walkPhase, walkAmount);
+
+	inst.facing = facing;
+	inst.body   = body;
+
+	// 경계하면 고개를 든다.
+	inst.anim[ANIM_HEAD] -= alert * 1.2f;
+
+	Model(r, lib, id, inst);
+}
+
+void Draw::Monster(Renderer& r, const ModelLibrary& lib, float sx, float sy,
+                   float lit, float time, int kind, int facing,
+                   float walkPhase, float walkAmount, float hurt)
+{
+	int   id = MODEL_SLIME;
+	float w  = 34.0f;
+	float h  = 26.0f;
+
+	if (kind == 1)      { id = MODEL_CHOMPER; w = 42.0f; h = 34.0f; }
+	else if (kind == 2) { id = MODEL_SPITTER; w = 36.0f; h = 46.0f; }
+
+	SoftShadow(r, sx, sy, w * 0.72f, w * 0.30f, 0.95f);
+
+	ModelInstance inst;
+	InitInstance(inst, sx, sy, w, h, lit);
+	SetCreatureAnim(inst, time, (float)kind * 2.3f, walkPhase, walkAmount);
+
+	inst.facing = facing;
+
+	// 맞으면 하얗게 튄다.
+	inst.tint = 1.0f + hurt * 2.4f;
+
+	Model(r, lib, id, inst);
+}
+
+void Draw::Pickup(Renderer& r, const ModelLibrary& lib, float sx, float sy,
+                  float lit, float time, int kind, float bob)
+{
+	int   id = MODEL_ORB;
+	float w  = 14.0f;
+	float h  = 14.0f;
+
+	if (kind == 1)      { id = MODEL_COIN;   w = 14.0f; h = 14.0f; }
+	else if (kind == 2) { id = MODEL_POTION; w = 16.0f; h = 22.0f; }
+
+	SoftShadow(r, sx, sy, 12.0f, 5.0f, 0.6f);
+
+	// 경험치 구슬은 스스로 빛난다.
+	if (kind == 0)
 	{
-		br = 0.230f; bg = 0.156f; bb = 0.102f;
-	}
-	else
-	{
-		br = 0.148f; bg = 0.148f; bb = 0.160f;
-	}
-
-	br *= lit;
-	bg *= lit;
-	bb *= lit;
-
-	float swing = sinf(walkPhase) * 4.0f * walkAmount;
-	float bob   = fabsf(cosf(walkPhase)) * 1.6f * walkAmount;
-	float backY = sy - legH - bob;
-
-	SoftShadow(r, sx, sy, bodyW * 0.85f, bodyW * 0.34f, 1.0f);
-
-	// 다리 넷 — 앞뒤가 엇갈려 움직인다
-	for (int i = 0; i < 4; ++i)
-	{
-		float side  = (i < 2) ? 1.0f : -1.0f;             // 앞다리 / 뒷다리
-		float phase = ((i % 2) == 0) ? 1.0f : -1.0f;
-		float lx    = sx + f * (i < 2 ? bodyW * 0.30f : -bodyW * 0.30f)
-		            + (float)(i % 2) * 2.2f * s + swing * phase * side * 0.5f;
-
-		r.DrawQuad(lx, backY + bodyH * 0.5f, 3.2f * s, legH,
-		           br * 0.72f, bg * 0.72f, bb * 0.72f);
-	}
-
-	// 몸통
-	r.DrawDiamond(sx, backY, bodyW, bodyH * 1.6f, br, bg, bb);
-
-	r.DrawQuad(sx - bodyW * 0.36f, backY - bodyH * 0.5f, bodyW * 0.72f, bodyH,
-	           br, bg, bb);
-
-	// 등에 닿는 빛
-	r.DrawDiamond(sx - f * 2.0f, backY - bodyH * 0.45f, bodyW * 0.62f, bodyH * 0.5f,
-	              br * 1.35f, bg * 1.35f, bb * 1.35f, 0.7f);
-
-	// 목 + 머리 — 경계 상태면 고개를 든다
-	float neckUp = (deer ? 10.0f : 5.0f) * s + alert * 7.0f;
-	float hx     = sx + f * bodyW * 0.46f;
-	float hy     = backY - neckUp;
-
-	r.DrawQuad(hx - 3.0f * s, hy, 6.0f * s, neckUp + 3.0f * s,
-	           br * 0.92f, bg * 0.92f, bb * 0.92f);
-
-	r.DrawDiamond(hx + f * 3.0f, hy - 3.0f * s, 15.0f * s, 9.0f * s,
-	              br, bg, bb);
-
-	// 귀 / 뿔
-	if (deer)
-	{
-		for (int i = 0; i < 2; ++i)
-		{
-			float ox = hx + f * 2.0f + (float)i * 4.0f * s - 2.0f * s;
-
-			r.DrawQuad(ox, hy - 12.0f * s, 1.8f * s, 10.0f * s,
-			           0.30f * lit, 0.24f * lit, 0.16f * lit);
-
-			r.DrawQuad(ox - 3.0f * s, hy - 12.0f * s, 4.0f * s, 1.6f * s,
-			           0.30f * lit, 0.24f * lit, 0.16f * lit);
-
-			r.DrawQuad(ox + 1.0f * s, hy - 16.0f * s, 3.4f * s, 1.6f * s,
-			           0.30f * lit, 0.24f * lit, 0.16f * lit);
-		}
-	}
-	else
-	{
-		r.DrawQuad(hx + f * 1.0f, hy - 6.0f * s, 2.6f * s, 5.0f * s,
-		           br * 0.8f, bg * 0.8f, bb * 0.8f);
-
-		r.DrawQuad(hx + f * 5.0f, hy - 6.0f * s, 2.6f * s, 5.0f * s,
-		           br * 0.8f, bg * 0.8f, bb * 0.8f);
+		float pulse = 0.6f + 0.4f * sinf(time * 3.4f + bob);
+		LightPool(r, sx, sy, 42.0f, 0.28f, 0.90f, 0.86f, 0.16f * pulse);
 	}
 
-	// 눈 — 늑대는 어둠 속에서 빛난다
-	if (!deer)
-	{
-		float glow = 0.55f + alert * 0.45f;
+	ModelInstance inst;
+	InitInstance(inst, sx, sy - 6.0f - sinf(time * 2.6f + bob) * 3.0f, w, h, lit);
 
-		r.DrawQuad(hx + f * 6.0f, hy - 1.0f * s, 2.2f * s, 2.0f * s,
-		           0.95f * glow, 0.80f * glow, 0.35f * glow);
-	}
-	else
-	{
-		r.DrawQuad(hx + f * 6.0f, hy - 1.0f * s, 2.0f * s, 2.0f * s,
-		           0.06f, 0.05f, 0.05f);
-	}
+	Model(r, lib, id, inst);
+}
 
-	// 꼬리
-	float tailSway = sinf(time * 2.2f + walkPhase) * 2.5f;
+void Draw::AttackArc(Renderer& r, float sx, float sy, int facing, float progress)
+{
+	// 앞쪽으로 훑고 지나가는 반달. progress 는 0 에서 1.
+	float reach = 26.0f + progress * 28.0f;
+	float fade  = (1.0f - progress);
 
-	r.DrawQuad(sx - f * bodyW * 0.50f, backY - bodyH * 0.4f + tailSway,
-	           7.0f * s, 3.0f * s,
-	           br * 0.85f, bg * 0.85f, bb * 0.85f);
+	float cx = sx + (float)facing * reach * 0.55f;
+	float cy = sy - 22.0f;
+
+	r.DrawEllipse(cx, cy, reach * 1.5f, reach * 0.85f,
+	              0.95f, 0.88f, 0.62f, 0.16f * fade);
+
+	r.DrawEllipse(cx, cy, reach * 1.0f, reach * 0.55f,
+	              1.00f, 0.94f, 0.74f, 0.22f * fade);
 }
