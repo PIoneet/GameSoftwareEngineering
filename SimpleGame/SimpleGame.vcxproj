@@ -179,6 +179,8 @@ if "$(Platform)"=="x64" (if exist "$(ProjectDir)Dependencies\x64\glew32.dll" xco
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Actor.h" />
+    <ClInclude Include="Actors.h" />
     <ClInclude Include="Draw.h" />
     <ClInclude Include="Font.h" />
     <ClInclude Include="Game.h" />
@@ -186,12 +188,15 @@ if "$(Platform)"=="x64" (if exist "$(ProjectDir)Dependencies\x64\glew32.dll" xco
     <ClInclude Include="IsoMath.h" />
     <ClInclude Include="Model.h" />
     <ClInclude Include="Renderer.h" />
+    <ClInclude Include="Scene.h" />
     <ClInclude Include="Stats.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="World.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Actor.cpp" />
+    <ClCompile Include="Actors.cpp" />
     <ClCompile Include="Draw.cpp" />
     <ClCompile Include="Font.cpp" />
     <ClCompile Include="Game.cpp" />
@@ -199,6 +204,7 @@ if "$(Platform)"=="x64" (if exist "$(ProjectDir)Dependencies\x64\glew32.dll" xco
     <ClCompile Include="Level1.cpp" />
     <ClCompile Include="Model.cpp" />
     <ClCompile Include="Renderer.cpp" />
+    <ClCompile Include="Scene.cpp" />
     <ClCompile Include="SimpleGame.cpp" />
     <ClCompile Include="Stats.cpp" />
     <ClCompile Include="World.cpp" />
