@@ -1,13 +1,16 @@
 #pragma once
 
 #include <vector>
+
 #include "World.h"
 #include "Model.h"
 #include "Stats.h"
+#include "Scene.h"
+#include "Actors.h"
 
 class Renderer;
 
-// 캐릭터 충돌 반경 (타일). Game.cpp 와 Level1.cpp 가 함께 쓴다.
+// 캐릭터 충돌 반경 (타일)
 const float BODY_RADIUS = 0.30f;
 
 // 튜토리얼 의뢰 "호수 보고서" 의 진행 단계
@@ -20,42 +23,7 @@ enum QuestStage
 	QS_DONE
 };
 
-struct Character
-{
-	float x, y;
-	float vx, vy;         // 이번 프레임 이동량
-	float walkPhase;      // 걷기 사이클 위상
-	float walkAmount;     // 0..1 — 걷는 정도. 급격히 튀지 않게 보간한다
-	float bobPhase;       // 개체별 대기 애니메이션 위상
-	int   facing;         // -1 왼쪽, +1 오른쪽
-};
-
-struct Npc
-{
-	Character      c;
-	const wchar_t* name;
-	int            dialogueSet;
-	int            witnessId;   // -1 이면 의뢰 증인이 아님
-	bool           talked;
-	int            look;        // 외형 팔레트 인덱스
-
-	float homeX, homeY;
-	float targetX, targetY;
-	float waitTimer;
-	float wander;
-};
-
-struct Beast
-{
-	Character c;
-	int   kind;           // BeastKind
-	float homeX, homeY;
-	float targetX, targetY;
-	float waitTimer;
-	float alert;          // 0..1 — 플레이어를 의식하는 정도
-	float speed;
-};
-
+// 분위기 입자. 액터로 만들 만큼 무겁지 않아 한 배열로 굴린다.
 struct Mote
 {
 	float x, y, z;
@@ -64,6 +32,7 @@ struct Mote
 	int   kind;           // 0 = 반딧불, 1 = 호수 쪽 재, 2 = 모닥불 불티
 };
 
+// 바닥을 밝히는 광원. 그리기 전용이라 액터가 아니다.
 struct LightSource
 {
 	float x, y;
@@ -73,44 +42,10 @@ struct LightSource
 	bool  flicker;
 };
 
-struct Drawable
-{
-	float depth;
-	int   kind;           // 0 = 오브젝트, 1 = NPC, 2 = 플레이어, 3 = 짐승, 4 = 몬스터, 5 = 습득물
-	int   index;
-};
-
-// ── 1레벨 ──
-
-struct Monster
-{
-	Character c;
-
-	int   kind;           // 0 슬라임, 1 초퍼, 2 스피터
-	int   hp, maxHp;
-	int   attack;
-	int   xpReward;
-
-	float speed;
-	float aggroRange;
-	float attackCd;       // 남은 공격 대기
-	float hurtFlash;      // 피격 섬광 (0~1)
-	float knockX, knockY; // 밀려나는 속도
-
-	bool  alive;
-	float deathTimer;     // 죽고 사라지기까지
-};
-
-struct Pickup
-{
-	float x, y;
-	int   kind;           // 0 경험치 구슬, 1 동전, 2 회복약
-	int   value;
-	float bobSeed;
-	float life;
-	bool  taken;
-};
-
+// 게임 전체를 묶는다.
+//
+// 화면에 놓이는 것은 전부 Scene 안의 액터다. Game 에는 그 위에 얹히는 것들만
+// 남는다 — 퀘스트 진행, 대화, 능력치, 카메라, UI.
 class Game
 {
 public:
@@ -120,26 +55,31 @@ public:
 	void Render();
 
 private:
+	// ── 씬 구성 ──
+	void BuildVillageScene();
+	void SpawnPropsFromWorld();
+	void SpawnVillagers();
+	void SpawnWildlife();
+	void BuildLights();
+
+	UpdateContext MakeUpdateContext();
+	RenderContext MakeRenderContext(float ox, float oy);
+
 	// ── 갱신 ──
-	void UpdatePlayer(float dt);
-	void UpdateNpcs(float dt);
-	void UpdateBeasts(float dt);
 	void UpdateInteraction();
 	void UpdateMotes(float dt);
-	void MoveWithCollision(Character& c, float dx, float dy, float radius);
-	void StepAnim(Character& c, float dt, bool moving);
+	void CollectPickups();
 
 	// ── 대화 / 퀘스트 ──
-	void StartDialogue(int setIndex, int npcIndex);
+	void StartDialogue(int setIndex, NpcActor* npc);
 	void AdvanceDialogue();
 	void OnDialogueFinished(int setIndex);
-	int  DialogueSetForNpc(int npcIndex) const;
+	int  DialogueSetForNpc(const NpcActor* npc) const;
 	int  DialogueSetForSigil() const;
 	void Toast(const wchar_t* text);
 
 	// ── 렌더 ──
 	void RenderGroundGlow(float ox, float oy);
-	void RenderSorted(float ox, float oy);
 	void RenderMotes(float ox, float oy);
 	void RenderUI();
 	void RenderDialogueBox();
@@ -154,65 +94,61 @@ private:
 	// ── 1레벨 (Level1.cpp) ──
 	void EnterRuin(unsigned int seed);
 	void ReturnToVillage();
-	void UpdateRuin(float dt);
-	void RenderRuinEntities(float ox, float oy);
-	void RenderRuinUI();
 	void SpawnRuinMonsters();
-	void DoPlayerAttack();
-	void HurtPlayer(int amount);
-	void DropLoot(float x, float y, int monsterKind);
+	void UpdateRuinInput();
+	void RenderRuinUI();
 
 	Renderer*    m_R = 0;
 	World        m_World;
 	ModelLibrary m_Models;
+	Scene        m_Scene;
+
+	// 자주 들여다봐야 하는 액터는 따로 붙들어 둔다.
+	// 소유는 어디까지나 Scene 이다.
+	PlayerActor* m_Player = 0;
+	PropActor*   m_Sigil  = 0;
 
 	int   m_WinW = 1280;
 	int   m_WinH = 720;
 	float m_Time = 0.0f;
 
-	Character m_Player;
-	std::vector<Npc>         m_Npcs;
-	std::vector<Beast>       m_Beasts;
 	std::vector<Mote>        m_Motes;
 	std::vector<LightSource> m_Lights;
-	std::vector<Drawable>    m_Draws;
+	std::vector<Actor*>      m_Query;   // 질의 결과 재사용 버퍼
 
 	float m_CamX = 0.0f;
 	float m_CamY = 0.0f;
 	bool  m_CamReady = false;
 
+	// ── 퀘스트 ──
 	QuestStage m_Stage = QS_NOT_STARTED;
 	int   m_WitnessCount = 0;
 	bool  m_HasCoin = false;
 
-	bool  m_DialogueOpen = false;
-	int   m_DialogueSet = -1;
-	int   m_DialogueLine = 0;
-	int   m_TalkingNpc = -1;
+	// ── 대화 ──
+	bool      m_DialogueOpen = false;
+	int       m_DialogueSet  = -1;
+	int       m_DialogueLine = 0;
+	NpcActor* m_TalkingNpc   = 0;
 
-	int   m_FocusNpc = -1;
-	bool  m_FocusSigil = false;
+	NpcActor* m_FocusNpc   = 0;
+	bool      m_FocusSigil = false;
 
+	// ── 연출 ──
 	bool  m_JournalOpen = false;
-	float m_TitleTimer = 5.5f;
-	float m_EndTimer = -1.0f;
-	float m_ToastTimer = 0.0f;
+	float m_TitleTimer  = 5.5f;
+	float m_EndTimer    = -1.0f;
+	float m_ToastTimer  = 0.0f;
 	const wchar_t* m_ToastText = 0;
 	float m_Dread = 0.0f;
 
-	// ── 1레벨 상태 ──
-	LevelKind m_Level = LEVEL_VILLAGE;
-
-	PlayerStats          m_Stats;
-	std::vector<Monster> m_Monsters;
-	std::vector<Pickup>  m_Pickups;
+	// ── 1레벨 ──
+	LevelKind   m_Level = LEVEL_VILLAGE;
+	PlayerStats m_Stats;
 
 	bool  m_StatsOpen    = false;
-	float m_AttackCd     = 0.0f;   // 남은 공격 대기
-	float m_AttackAnim   = -1.0f;  // 0~1 진행, 음수면 공격 중이 아님
-	float m_HurtFlash    = 0.0f;   // 플레이어 피격 섬광
-	float m_LevelUpTimer = 0.0f;   // 레벨업 배너
+	float m_LevelUpTimer = 0.0f;
 	int   m_Killed       = 0;
-	float m_RuinIntro    = 0.0f;   // 진입 연출
+	float m_RuinIntro    = 0.0f;
 	unsigned int m_RuinSeed = 0;
 };

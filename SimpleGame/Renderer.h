@@ -14,6 +14,8 @@ enum TextFont
 	FONT_TITLE
 };
 
+// 드로우 콜 집계는 Profiler 가 맡는다 (PROF_DC_SHAPE / TEXT / POST).
+
 // 2D 렌더러. 화면 픽셀 좌표(좌상단 원점)만 받는다.
 // 월드 → 스크린 변환은 호출하는 쪽의 책임이다.
 //
@@ -86,6 +88,10 @@ private:
 
 	void   DrawUnitShape(GLuint vbo, int vertexCount, float x, float y, float w, float h,
 	                     float r, float g, float b, float a);
+
+	// 드로우 콜은 전부 이 문을 지난다. 여기서만 세면 빠뜨릴 곳이 없다.
+	// counter 는 ProfCounter (PROF_DC_*).
+	void   Submit(int vertexCount, int counter);
 
 	Font&  FontFor(TextFont font);
 

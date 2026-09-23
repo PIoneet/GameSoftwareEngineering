@@ -160,8 +160,6 @@ PlayerActor::PlayerActor()
 
 void PlayerActor::Update(float dt, const UpdateContext& ctx)
 {
-	respawned = false;
-
 	if (m_AttackCd  > 0.0f) m_AttackCd  -= dt;
 	if (m_HurtFlash > 0.0f) m_HurtFlash -= dt * 2.5f;
 
@@ -243,7 +241,8 @@ void PlayerActor::DoAttack(const UpdateContext& ctx)
 
 		int damage = ctx.stats->attack + (int)(ctx.time * 13.0f) % 4;
 
-		m->TakeDamage(damage, WorldX(), WorldY(), ctx);
+		if (m->TakeDamage(damage, WorldX(), WorldY(), ctx))
+			++kills;
 	}
 }
 

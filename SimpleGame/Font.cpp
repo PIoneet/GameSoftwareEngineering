@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "Font.h"
+#include "Profiler.h"
 
 #include <windows.h>
 #include <vector>
@@ -191,6 +192,8 @@ bool Font::Bake(wchar_t ch, Glyph& out)
 	out.w       = gw;
 	out.h       = gh;
 	out.advance = sz.cx;
+
+	Prof::Add(PROF_GLYPH_BAKED);
 
 	m_PenX += gw + 1;
 

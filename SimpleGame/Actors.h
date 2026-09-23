@@ -86,8 +86,14 @@ public:
 	bool combatEnabled = false;   // 폐허에서만 공격이 열린다
 	bool frozen        = false;   // 대화창이 떠 있으면 멈춘다
 
-	// 죽어서 입구로 돌아갔음을 Game 에 알리는 일회성 신호
+	// 죽어서 입구로 돌아갔음을 알리는 일회성 신호.
+	// 세우는 쪽과 지우는 쪽이 다르다 — Game 이 읽고 직접 내린다.
+	// 액터 자신이 매 프레임 초기화하면, 몬스터가 먼저 갱신된 프레임에서
+	// 신호가 읽히기 전에 지워진다.
 	bool respawned = false;
+
+	// 이 레벨에서 쓰러뜨린 수. 액터가 새로 만들어질 때마다 0 에서 시작한다.
+	int kills = 0;
 
 private:
 	void DoAttack(const UpdateContext& ctx);

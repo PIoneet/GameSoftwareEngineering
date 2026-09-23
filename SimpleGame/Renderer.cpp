@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "Renderer.h"
+#include "Profiler.h"
 
 #include <cstring>
 #include <cmath>
@@ -395,6 +396,13 @@ GLuint Renderer::CompileShaders(const char* filenameVS, const char* filenameFS)
 //  프레임 흐름
 // ─────────────────────────────────────────────────────────────────────────
 
+void Renderer::Submit(int vertexCount, int counter)
+{
+	glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+
+	Prof::Add(counter);
+}
+
 void Renderer::BeginScene(float r, float g, float b)
 {
 	if (m_TargetsOK)
@@ -417,7 +425,7 @@ void Renderer::DrawFullscreen(GLint attribLocation)
 	glBindBuffer(GL_ARRAY_BUFFER, m_VBOQuad);
 	glVertexAttribPointer(attribLocation, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, 0);
 
-	glDrawArrays(GL_TRIANGLES, 0, 6);
+	Submit(6, PROF_DC_POST);
 
 	glDisableVertexAttribArray(attribLocation);
 }
@@ -426,6 +434,8 @@ void Renderer::PostProcess(float dread, float time)
 {
 	if (!m_Initialized || !m_TargetsOK)
 		return;
+
+	PROF_SCOPE(PROF_RND_POST);
 
 	// 사후처리는 덮어쓰기다. 블렌딩이 켜져 있으면 결과가 섞인다.
 	glDisable(GL_BLEND);
@@ -506,7 +516,7 @@ void Renderer::DrawUnitShape(GLuint vbo, int vertexCount, float x, float y, floa
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
 	glVertexAttribPointer(m_SpriteAttribPos, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, 0);
 
-	glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+	Submit(vertexCount, PROF_DC_SHAPE);
 
 	glDisableVertexAttribArray(m_SpriteAttribPos);
 }
@@ -551,7 +561,7 @@ void Renderer::DrawWater(float cx, float cy, float w, float h,
 	glBindBuffer(GL_ARRAY_BUFFER, m_VBODiamond);
 	glVertexAttribPointer(m_WaterAttribPos, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, 0);
 
-	glDrawArrays(GL_TRIANGLES, 0, 6);
+	Submit(6, PROF_DC_SHAPE);
 
 	glDisableVertexAttribArray(m_WaterAttribPos);
 }
@@ -574,7 +584,7 @@ void Renderer::DrawFlame(float cx, float cyBase, float w, float h,
 	glBindBuffer(GL_ARRAY_BUFFER, m_VBOQuad);
 	glVertexAttribPointer(m_FlameAttribPos, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, 0);
 
-	glDrawArrays(GL_TRIANGLES, 0, 6);
+	Submit(6, PROF_DC_SHAPE);
 
 	glDisableVertexAttribArray(m_FlameAttribPos);
 }
@@ -638,7 +648,8 @@ void Renderer::DrawString(float x, float y, const wchar_t* text,
 			glUniform4f(m_TexUniRect, penX, top, (float)g->w, (float)g->h);
 			glUniform4f(m_TexUniUV, g->u0, g->v0, g->u1, g->v1);
 
-			glDrawArrays(GL_TRIANGLES, 0, 6);
+			// 글자 한 자가 드로우 콜 하나다. UI 텍스트가 많으면 여기서 쌓인다.
+			Submit(6, PROF_DC_TEXT);
 		}
 
 		penX += (float)g->advance;

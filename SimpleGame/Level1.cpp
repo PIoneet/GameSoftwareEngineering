@@ -1,55 +1,21 @@
 #include "stdafx.h"
 #include "Game.h"
 #include "Renderer.h"
-#include "Draw.h"
 #include "Input.h"
-#include "IsoMath.h"
+#include "Profiler.h"
 
 #include <cmath>
 #include <cstdio>
 #include <cwchar>
 
-// 1레벨(폐허)의 전투·성장 규칙.
-// 마을 쪽 로직과 섞이지 않도록 번역 단위를 나눠 두었다.
+// 1레벨(폐허)의 진입·배치·UI.
+//
+// 전투와 AI 는 전부 액터가 들고 있다 (Actors.cpp). 여기 남은 것은
+// "레벨을 세우는 일" 과 "화면에 상태를 보여주는 일" 뿐이다.
 
 namespace
 {
 	float Clamp01(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
-
-	float Dist(float ax, float ay, float bx, float by)
-	{
-		float dx = bx - ax;
-		float dy = by - ay;
-
-		return sqrtf(dx * dx + dy * dy);
-	}
-
-	const float ATTACK_COOLDOWN = 0.45f;
-	const float ATTACK_REACH    = 2.0f;
-	const float PICKUP_RANGE    = 0.9f;
-	const float MAGNET_RANGE    = 3.2f;
-
-	struct MonsterDef
-	{
-		int   hp;
-		int   attack;
-		int   xp;
-		float speed;
-		float aggro;
-	};
-
-	// 슬라임 / 초퍼 / 스피터
-	const MonsterDef MONSTER_DEFS[3] =
-	{
-		{ 22,  5,  8, 1.5f,  7.0f },
-		{ 38,  9, 16, 2.4f, 10.0f },
-		{ 30, 12, 22, 1.8f, 12.0f },
-	};
-
-	const wchar_t* MONSTER_NAMES[3] =
-	{
-		L"슬라임", L"초퍼", L"스피터"
-	};
 }
 
 
@@ -61,25 +27,34 @@ void Game::EnterRuin(unsigned int seed)
 {
 	m_RuinSeed = seed;
 	m_Level    = LEVEL_RUIN;
+	Prof::SetLabel("ruin");
 
 	m_World.GenerateRuin(seed);
 
-	m_Player.x = m_World.SpawnX();
-	m_Player.y = m_World.SpawnY();
-	m_Player.vx = 0.0f;
-	m_Player.vy = 0.0f;
-	m_Player.walkAmount = 0.0f;
+	// Scene::Clear 가 액터를 전부 지우므로 붙들고 있던 포인터도 함께 버린다.
+	m_Scene.Clear();
 
-	m_Monsters.clear();
-	m_Pickups.clear();
-	m_Lights.clear();
+	m_Player     = 0;
+	m_Sigil      = 0;
+	m_FocusNpc   = 0;
+	m_FocusSigil = false;
+	m_TalkingNpc = 0;
 
+	m_DialogueOpen = false;
+
+	SpawnPropsFromWorld();
 	SpawnRuinMonsters();
 
+	// 폐허에는 마을의 창문 불빛도 모닥불도 없다. 플레이어의 랜턴뿐이다.
+	m_Lights.clear();
+
+	m_Player = new PlayerActor();
+	m_Player->x = m_World.SpawnX();
+	m_Player->y = m_World.SpawnY();
+	m_Player->combatEnabled = true;
+	m_Scene.Add(m_Player);
+
 	m_Killed      = 0;
-	m_AttackCd    = 0.0f;
-	m_AttackAnim  = -1.0f;
-	m_HurtFlash   = 0.0f;
 	m_RuinIntro   = 4.0f;
 	m_CamReady    = false;
 	m_JournalOpen = false;
@@ -90,46 +65,7 @@ void Game::EnterRuin(unsigned int seed)
 
 void Game::ReturnToVillage()
 {
-	m_Level = LEVEL_VILLAGE;
-
-	m_World.Generate();
-
-	m_Monsters.clear();
-	m_Pickups.clear();
-
-	m_Player.x = m_World.SpawnX();
-	m_Player.y = m_World.SpawnY();
-	m_Player.vx = 0.0f;
-	m_Player.vy = 0.0f;
-
-	m_CamReady  = false;
-	m_StatsOpen = false;
-
-	// 마을 광원 목록을 다시 만든다.
-	m_Lights.clear();
-
-	const std::vector<WorldObject>& objs = m_World.Objects();
-
-	for (size_t i = 0; i < objs.size(); ++i)
-	{
-		const WorldObject& o = objs[i];
-
-		if (o.type == OBJ_CAMPFIRE)
-		{
-			LightSource l = { o.x, o.y, 1.00f, 0.58f, 0.24f, 210.0f, 0.55f, true };
-			m_Lights.push_back(l);
-		}
-		else if (o.type == OBJ_LANTERN)
-		{
-			LightSource l = { o.x, o.y, 1.00f, 0.74f, 0.36f, 120.0f, 0.34f, true };
-			m_Lights.push_back(l);
-		}
-		else if (o.type == OBJ_INN || o.type == OBJ_HOUSE || o.type == OBJ_CHAPEL)
-		{
-			LightSource l = { o.x, o.y + 0.6f, 0.98f, 0.72f, 0.36f, 92.0f, 0.16f, false };
-			m_Lights.push_back(l);
-		}
-	}
+	BuildVillageScene();
 
 	Toast(L"라벤홀로 돌아왔다");
 }
@@ -139,6 +75,7 @@ void Game::SpawnRuinMonsters()
 	const std::vector<Room>& rooms = m_World.Rooms();
 
 	unsigned int rng = m_RuinSeed ^ 0xA5A5u;
+	int          made = 0;
 
 	// 시작 방은 비워 둔다 — 들어가자마자 맞고 시작하면 곤란하다.
 	for (size_t i = 1; i < rooms.size(); ++i)
@@ -151,12 +88,12 @@ void Game::SpawnRuinMonsters()
 		for (int k = 0; k < count; ++k)
 		{
 			rng = rng * 1664525u + 1013904223u;
-			float fx = (float)(rm.x0 + 1) + (float)((rng >> 8) % 1000) * 0.001f
-			         * (float)(rm.x1 - rm.x0 - 2);
+			float fx = (float)(rm.x0 + 1)
+			         + (float)((rng >> 8) % 1000) * 0.001f * (float)(rm.x1 - rm.x0 - 2);
 
 			rng = rng * 1664525u + 1013904223u;
-			float fy = (float)(rm.y0 + 1) + (float)((rng >> 8) % 1000) * 0.001f
-			         * (float)(rm.y1 - rm.y0 - 2);
+			float fy = (float)(rm.y0 + 1)
+			         + (float)((rng >> 8) % 1000) * 0.001f * (float)(rm.y1 - rm.y0 - 2);
 
 			if (m_World.Blocked(fx, fy, 0.35f))
 				continue;
@@ -166,332 +103,50 @@ void Game::SpawnRuinMonsters()
 			// 안쪽 방일수록 험한 놈이 나온다.
 			int kind = 0;
 
-			if (i >= rooms.size() * 2 / 3)      kind = (int)((rng >> 8) % 3);
-			else if (i >= rooms.size() / 3)     kind = (int)((rng >> 8) % 2);
+			if (i >= rooms.size() * 2 / 3)    kind = (int)((rng >> 8) % 3);
+			else if (i >= rooms.size() / 3)   kind = (int)((rng >> 8) % 2);
 
-			const MonsterDef& def = MONSTER_DEFS[kind];
+			MonsterActor* m = new MonsterActor(kind);
 
-			Monster m;
+			m->x = fx;
+			m->y = fy;
+			m->SetSeed((float)made * 1.9f);
 
-			m.kind       = kind;
-			m.maxHp      = def.hp;
-			m.hp         = def.hp;
-			m.attack     = def.attack;
-			m.xpReward   = def.xp;
-			m.speed      = def.speed;
-			m.aggroRange = def.aggro;
-			m.attackCd   = 0.0f;
-			m.hurtFlash  = 0.0f;
-			m.knockX     = 0.0f;
-			m.knockY     = 0.0f;
-			m.alive      = true;
-			m.deathTimer = 0.0f;
+			m_Scene.Add(m);
 
-			m.c.x  = fx;
-			m.c.y  = fy;
-			m.c.vx = 0.0f;
-			m.c.vy = 0.0f;
-
-			m.c.walkPhase  = (float)k;
-			m.c.walkAmount = 0.0f;
-			m.c.bobPhase   = (float)(i + k);
-			m.c.facing     = 1;
-
-			m_Monsters.push_back(m);
+			++made;
 		}
 	}
 }
 
 
 // ─────────────────────────────────────────────────────────────────────────
-//  전투
+//  입력 — 전투는 PlayerActor 가 처리하고, 여기는 소비·분배만 본다
 // ─────────────────────────────────────────────────────────────────────────
 
-void Game::DoPlayerAttack()
+void Game::UpdateRuinInput()
 {
-	m_AttackCd   = ATTACK_COOLDOWN;
-	m_AttackAnim = 0.0f;
-
-	for (size_t i = 0; i < m_Monsters.size(); ++i)
+	if (m_StatsOpen)
 	{
-		Monster& m = m_Monsters[i];
-
-		if (!m.alive)
-			continue;
-
-		float dx = m.c.x - m_Player.x;
-		float dy = m.c.y - m_Player.y;
-		float d  = sqrtf(dx * dx + dy * dy);
-
-		if (d > ATTACK_REACH)
-			continue;
-
-		// 바라보는 쪽만 벤다. 아주 가까우면 방향을 따지지 않는다.
-		float screenDir = IsoScreenX(dx, dy);
-		bool  inFront   = (screenDir * (float)m_Player.facing) > 0.0f;
-
-		if (!inFront && d > ATTACK_REACH * 0.55f)
-			continue;
-
-		int damage = m_Stats.attack + (int)(m_Time * 13.0f) % 4;
-
-		m.hp -= damage;
-		m.hurtFlash = 1.0f;
-
-		// 뒤로 밀어낸다
-		if (d > 0.01f)
-		{
-			m.knockX = dx / d * 5.5f;
-			m.knockY = dy / d * 5.5f;
-		}
-
-		if (m.hp <= 0)
-		{
-			m.alive      = false;
-			m.deathTimer = 0.5f;
-
-			++m_Killed;
-
-			DropLoot(m.c.x, m.c.y, m.kind);
-		}
-	}
-}
-
-void Game::HurtPlayer(int amount)
-{
-	int taken = amount - m_Stats.defense;
-
-	if (taken < 1)
-		taken = 1;
-
-	m_Stats.hp -= taken;
-	m_HurtFlash = 1.0f;
-
-	if (m_Stats.hp > 0)
-		return;
-
-	// 쓰러지면 시작 지점에서 절반만 회복한 채로 다시 선다.
-	m_Stats.hp = m_Stats.maxHp / 2;
-
-	m_Player.x = m_World.SpawnX();
-	m_Player.y = m_World.SpawnY();
-	m_CamReady = false;
-
-	Toast(L"정신을 잃었다 — 입구에서 깨어난다");
-}
-
-void Game::DropLoot(float x, float y, int monsterKind)
-{
-	// 경험치 구슬은 반드시 떨어진다.
-	{
-		Pickup p;
-
-		p.x       = x;
-		p.y       = y;
-		p.kind    = 0;
-		p.value   = MONSTER_DEFS[monsterKind].xp;
-		p.bobSeed = (float)m_Pickups.size() * 0.7f;
-		p.life    = 60.0f;
-		p.taken   = false;
-
-		m_Pickups.push_back(p);
-	}
-
-	unsigned int roll = (unsigned int)(m_Time * 1000.0f) + (unsigned int)m_Pickups.size() * 71u;
-
-	// 동전과 회복약은 확률로 떨어진다.
-	if ((roll % 100u) < 45u)
-	{
-		Pickup p;
-
-		p.x       = x + 0.4f;
-		p.y       = y - 0.3f;
-		p.kind    = 1;
-		p.value   = 3 + (int)(roll % 7u);
-		p.bobSeed = (float)m_Pickups.size() * 0.7f;
-		p.life    = 60.0f;
-		p.taken   = false;
-
-		m_Pickups.push_back(p);
-	}
-
-	if ((roll % 100u) < 18u)
-	{
-		Pickup p;
-
-		p.x       = x - 0.4f;
-		p.y       = y + 0.3f;
-		p.kind    = 2;
-		p.value   = 1;
-		p.bobSeed = (float)m_Pickups.size() * 0.7f;
-		p.life    = 60.0f;
-		p.taken   = false;
-
-		m_Pickups.push_back(p);
-	}
-}
-
-
-// ─────────────────────────────────────────────────────────────────────────
-//  갱신
-// ─────────────────────────────────────────────────────────────────────────
-
-void Game::UpdateRuin(float dt)
-{
-	if (m_RuinIntro    > 0.0f) m_RuinIntro    -= dt;
-	if (m_LevelUpTimer > 0.0f) m_LevelUpTimer -= dt;
-	if (m_HurtFlash    > 0.0f) m_HurtFlash    -= dt * 2.5f;
-	if (m_AttackCd     > 0.0f) m_AttackCd     -= dt;
-
-	if (m_AttackAnim >= 0.0f)
-	{
-		m_AttackAnim += dt * 5.0f;
-
-		if (m_AttackAnim > 1.0f)
-			m_AttackAnim = -1.0f;
-	}
-
-	// ── 입력 ──
-	if (!m_StatsOpen)
-	{
-		if (Input::Pressed(' ') && m_AttackCd <= 0.0f)
-			DoPlayerAttack();
-
-		// 회복약
-		if (Input::Pressed('q') && m_Stats.potions > 0 && m_Stats.hp < m_Stats.maxHp)
-		{
-			--m_Stats.potions;
-
-			m_Stats.hp += 30;
-
-			if (m_Stats.hp > m_Stats.maxHp)
-				m_Stats.hp = m_Stats.maxHp;
-
-			Toast(L"회복약을 마셨다");
-		}
-	}
-	else
-	{
-		// 스탯 분배 — 남은 포인트가 있을 때만 반응한다.
+		// 능력치 분배 — 남은 포인트가 있을 때만 반응한다.
 		if (Input::Pressed('1') && m_Stats.Invest(STAT_VITALITY)) Toast(L"체력을 올렸다");
 		if (Input::Pressed('2') && m_Stats.Invest(STAT_POWER))    Toast(L"공격을 올렸다");
 		if (Input::Pressed('3') && m_Stats.Invest(STAT_GUARD))    Toast(L"방어를 올렸다");
+
+		return;
 	}
 
-	// ── 몬스터 ──
-	for (size_t i = 0; i < m_Monsters.size(); ++i)
+	// 회복약
+	if (Input::Pressed('q') && m_Stats.potions > 0 && m_Stats.hp < m_Stats.maxHp)
 	{
-		Monster& m = m_Monsters[i];
+		--m_Stats.potions;
 
-		if (m.hurtFlash > 0.0f)
-			m.hurtFlash -= dt * 3.5f;
+		m_Stats.hp += 30;
 
-		if (!m.alive)
-		{
-			if (m.deathTimer > 0.0f)
-				m.deathTimer -= dt;
+		if (m_Stats.hp > m_Stats.maxHp)
+			m_Stats.hp = m_Stats.maxHp;
 
-			continue;
-		}
-
-		if (m.attackCd > 0.0f)
-			m.attackCd -= dt;
-
-		float dx = m_Player.x - m.c.x;
-		float dy = m_Player.y - m.c.y;
-		float d  = sqrtf(dx * dx + dy * dy);
-
-		bool moving = false;
-
-		// 밀려나는 중이면 그것부터 처리한다.
-		if (fabsf(m.knockX) + fabsf(m.knockY) > 0.01f)
-		{
-			MoveWithCollision(m.c, m.knockX * dt, m.knockY * dt, BODY_RADIUS * 0.8f);
-
-			m.knockX *= 0.82f;
-			m.knockY *= 0.82f;
-
-			moving = true;
-		}
-		else if (d < m.aggroRange)
-		{
-			// 쫓아온다
-			if (d > 0.95f)
-			{
-				float step = m.speed * dt;
-
-				float beforeX = m.c.x;
-				float beforeY = m.c.y;
-
-				MoveWithCollision(m.c, dx / d * step, dy / d * step, BODY_RADIUS * 0.8f);
-
-				m.c.vx = m.c.x - beforeX;
-				m.c.vy = m.c.y - beforeY;
-
-				moving = (fabsf(m.c.vx) + fabsf(m.c.vy)) > 0.0001f;
-
-				float screenDir = IsoScreenX(dx, dy);
-
-				if (screenDir >  0.001f) m.c.facing =  1;
-				if (screenDir < -0.001f) m.c.facing = -1;
-			}
-			else if (m.attackCd <= 0.0f)
-			{
-				HurtPlayer(m.attack);
-				m.attackCd = 1.2f;
-			}
-		}
-
-		float target = moving ? 1.0f : 0.0f;
-		m.c.walkAmount += (target - m.c.walkAmount) * Clamp01(dt * 9.0f);
-
-		if (moving)
-			m.c.walkPhase += dt * 9.0f;
-	}
-
-	// ── 습득물 ──
-	for (size_t i = 0; i < m_Pickups.size(); ++i)
-	{
-		Pickup& p = m_Pickups[i];
-
-		if (p.taken)
-			continue;
-
-		p.life -= dt;
-
-		float d = Dist(p.x, p.y, m_Player.x, m_Player.y);
-
-		// 가까워지면 빨려 온다 — 일일이 밟으러 다니지 않아도 되게.
-		if (d < MAGNET_RANGE && d > 0.01f)
-		{
-			float pull = (MAGNET_RANGE - d) / MAGNET_RANGE * 6.0f * dt;
-
-			p.x += (m_Player.x - p.x) / d * pull;
-			p.y += (m_Player.y - p.y) / d * pull;
-		}
-
-		if (d > PICKUP_RANGE)
-			continue;
-
-		p.taken = true;
-
-		if (p.kind == 0)
-		{
-			if (m_Stats.GainXp(p.value))
-			{
-				m_LevelUpTimer = 2.6f;
-				Toast(L"레벨이 올랐다 — C 키로 능력치 분배");
-			}
-		}
-		else if (p.kind == 1)
-		{
-			m_Stats.coins += p.value;
-		}
-		else
-		{
-			++m_Stats.potions;
-			Toast(L"회복약을 주웠다");
-		}
+		Toast(L"회복약을 마셨다");
 	}
 }
 
@@ -568,10 +223,10 @@ void Game::RenderRuinUI()
 	                0.46f, 0.45f, 0.42f, 1.0f, FONT_SMALL);
 
 	// ── 피격 섬광 ──
-	if (m_HurtFlash > 0.0f)
+	if (m_Player != 0 && m_Player->HurtFlash() > 0.0f)
 	{
 		m_R->DrawQuad(0.0f, 0.0f, (float)m_WinW, (float)m_WinH,
-		              0.75f, 0.10f, 0.10f, m_HurtFlash * 0.22f);
+		              0.75f, 0.10f, 0.10f, m_Player->HurtFlash() * 0.22f);
 	}
 
 	// ── 알림 ──
@@ -660,10 +315,10 @@ void Game::RenderRuinUI()
 	{
 		float y = sy + 92.0f + (float)i * 40.0f;
 
-		bool  can   = (m_Stats.statPoints > 0);
-		float keyR  = can ? 0.95f : 0.42f;
-		float keyG  = can ? 0.72f : 0.40f;
-		float keyB  = can ? 0.28f : 0.38f;
+		bool  can  = (m_Stats.statPoints > 0);
+		float keyR = can ? 0.95f : 0.42f;
+		float keyG = can ? 0.72f : 0.40f;
+		float keyB = can ? 0.28f : 0.38f;
 
 		m_R->DrawString(sx + 24.0f, y, rows[i].key, keyR, keyG, keyB, 1.0f, FONT_BODY);
 		m_R->DrawString(sx + 66.0f, y, rows[i].name, 0.91f, 0.89f, 0.84f, 1.0f, FONT_BODY);
@@ -680,12 +335,4 @@ void Game::RenderRuinUI()
 
 	m_R->DrawString(sx + sw - 90.0f, sy + sh - 14.0f, L"[C] 닫기",
 	                0.54f, 0.52f, 0.48f, 1.0f, FONT_SMALL);
-}
-
-void Game::RenderRuinEntities(float ox, float oy)
-{
-	// 정렬 목록에 이미 포함되어 RenderSorted 가 그린다.
-	// 이 함수는 앞으로 몬스터 체력 막대 같은 머리 위 표시를 붙일 자리다.
-	(void)ox;
-	(void)oy;
 }

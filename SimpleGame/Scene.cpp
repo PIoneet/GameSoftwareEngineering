@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "Scene.h"
 #include "IsoMath.h"
+#include "Profiler.h"
 
 #include <algorithm>
 
@@ -80,6 +81,8 @@ void Scene::UpdateRecursive(Actor* a, float dt, const UpdateContext& ctx)
 	if (a->IsStatic())
 		return;
 
+	Prof::Add(PROF_ACTOR_UPDATED);
+
 	a->Update(dt, ctx);
 
 	const std::vector<Actor*>& kids = a->Children();
@@ -90,6 +93,10 @@ void Scene::UpdateRecursive(Actor* a, float dt, const UpdateContext& ctx)
 
 void Scene::Update(float dt, const UpdateContext& ctx)
 {
+	PROF_SCOPE(PROF_UPD_SCENE);
+
+	Prof::Set(PROF_ACTOR_TOTAL, (int)m_All.size());
+
 	UpdateRecursive(m_Root, dt, ctx);
 
 	// 갱신이 끝난 뒤 한 번에 월드 좌표를 내린다.
@@ -98,6 +105,8 @@ void Scene::Update(float dt, const UpdateContext& ctx)
 
 void Scene::Collect(Actor* a, const RenderContext& ctx)
 {
+	Prof::Add(PROF_ACTOR_VISITED);
+
 	// 부모를 숨기면 서브트리가 통째로 숨는다.
 	if (!a->visible)
 		return;
@@ -124,21 +133,35 @@ void Scene::Render(const RenderContext& ctx)
 {
 	m_Visible.clear();
 
-	Collect(m_Root, ctx);
+	{
+		PROF_SCOPE(PROF_RND_COLLECT);
+		Collect(m_Root, ctx);
+	}
 
-	// painter's algorithm — 깊이가 작은 것(뒤)부터 그린다.
-	std::sort(m_Visible.begin(), m_Visible.end(), DepthLess);
+	{
+		// painter's algorithm — 깊이가 작은 것(뒤)부터 그린다.
+		PROF_SCOPE(PROF_RND_SORT);
+		std::sort(m_Visible.begin(), m_Visible.end(), DepthLess);
+	}
 
-	for (size_t i = 0; i < m_Visible.size(); ++i)
-		m_Visible[i]->Render(ctx);
+	{
+		PROF_SCOPE(PROF_RND_ACTORS);
+
+		for (size_t i = 0; i < m_Visible.size(); ++i)
+			m_Visible[i]->Render(ctx);
+	}
 
 	m_DrawnLastFrame = (int)m_Visible.size();
+	Prof::Set(PROF_ACTOR_VISIBLE, m_DrawnLastFrame);
 }
 
 void Scene::QueryNear(float wx, float wy, float radius, int kind,
                       std::vector<Actor*>& out) const
 {
 	out.clear();
+
+	Prof::Add(PROF_QUERY_CALLS);
+	Prof::Add(PROF_QUERY_SCANNED, (int)m_All.size());
 
 	float r2 = radius * radius;
 
@@ -162,6 +185,9 @@ void Scene::QueryNear(float wx, float wy, float radius, int kind,
 
 Actor* Scene::FindNearest(float wx, float wy, float radius, int kind) const
 {
+	Prof::Add(PROF_QUERY_CALLS);
+	Prof::Add(PROF_QUERY_SCANNED, (int)m_All.size());
+
 	Actor* best  = 0;
 	float  bestD = radius * radius;
 
@@ -222,6 +248,7 @@ void Scene::Reap()
 		}
 
 		// 소멸자가 부모와 자식 관계를 정리한다.
+		Prof::Add(PROF_ACTOR_REAPED);
 		delete a;
 	}
 

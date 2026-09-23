@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "World.h"
+#include "Profiler.h"
 
 #include <cmath>
 
@@ -434,6 +435,8 @@ void World::BuildGrid()
 
 bool World::Blocked(float x, float y, float radius) const
 {
+	Prof::Add(PROF_COLLIDE_CALLS);
+
 	if (x < radius || y < radius || x > MAP_W - radius || y > MAP_H - radius)
 		return true;
 
@@ -453,6 +456,8 @@ bool World::Blocked(float x, float y, float radius) const
 	int cy = ClampInt((int)floorf(y / (float)GRID_CELL), 0, GRID_H - 1);
 
 	const std::vector<int>& cell = m_Grid[cy * GRID_W + cx];
+
+	Prof::Add(PROF_COLLIDE_CANDIDATES, (int)cell.size());
 
 	for (size_t i = 0; i < cell.size(); ++i)
 	{

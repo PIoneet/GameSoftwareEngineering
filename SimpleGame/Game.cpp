@@ -1,46 +1,25 @@
-﻿#include "stdafx.h"
+#include "stdafx.h"
 #include "Game.h"
 #include "Renderer.h"
 #include "Draw.h"
 #include "Input.h"
 #include "IsoMath.h"
+#include "Profiler.h"
 
 #include <cmath>
 #include <cstdio>
 #include <cwchar>
-#include <algorithm>
 
 // ─────────────────────────────────────────────────────────────────────────
 //  상수
 // ─────────────────────────────────────────────────────────────────────────
 
-static const float PLAYER_SPEED = 4.6f;    // 타일/초
-static const float NPC_SPEED    = 1.1f;
 static const float TALK_RANGE   = 2.0f;
+static const float PICKUP_RANGE = 0.9f;
 
-static const int MOTE_COUNT  = 96;
-static const int NPC_COUNT   = 14;
+static const int MOTE_COUNT = 96;
+static const int NPC_COUNT  = 14;
 static const int BEAST_COUNT = 16;
-
-// 외형 팔레트 — 망토 / 피부 / 머리
-static const PersonLook LOOKS[] =
-{
-	{ { 0.30f, 0.29f, 0.40f }, { 0.76f, 0.62f, 0.49f }, { 0.20f, 0.16f, 0.13f }, 1.00f }, //  0 미렌
-	{ { 0.34f, 0.29f, 0.19f }, { 0.70f, 0.55f, 0.41f }, { 0.36f, 0.33f, 0.28f }, 1.00f }, //  1 호드
-	{ { 0.20f, 0.31f, 0.34f }, { 0.72f, 0.57f, 0.44f }, { 0.24f, 0.21f, 0.17f }, 1.00f }, //  2 펠
-	{ { 0.46f, 0.31f, 0.34f }, { 0.80f, 0.66f, 0.52f }, { 0.30f, 0.19f, 0.11f }, 0.94f }, //  3 타마
-	{ { 0.26f, 0.23f, 0.23f }, { 0.66f, 0.50f, 0.37f }, { 0.15f, 0.13f, 0.11f }, 1.06f }, //  4 고렌
-	{ { 0.36f, 0.37f, 0.26f }, { 0.79f, 0.66f, 0.53f }, { 0.27f, 0.20f, 0.13f }, 0.74f }, //  5 닙
-	{ { 0.33f, 0.26f, 0.31f }, { 0.74f, 0.54f, 0.44f }, { 0.31f, 0.28f, 0.25f }, 0.98f }, //  6 보스크
-	{ { 0.22f, 0.21f, 0.26f }, { 0.73f, 0.60f, 0.48f }, { 0.55f, 0.53f, 0.50f }, 1.00f }, //  7 에드라
-	{ { 0.40f, 0.28f, 0.22f }, { 0.77f, 0.62f, 0.48f }, { 0.28f, 0.22f, 0.16f }, 0.97f }, //  8 마르타
-	{ { 0.24f, 0.28f, 0.32f }, { 0.71f, 0.57f, 0.44f }, { 0.18f, 0.16f, 0.14f }, 1.05f }, //  9 콜름
-	{ { 0.28f, 0.34f, 0.25f }, { 0.78f, 0.64f, 0.50f }, { 0.34f, 0.26f, 0.15f }, 0.95f }, // 10 위나
-	{ { 0.32f, 0.27f, 0.20f }, { 0.69f, 0.54f, 0.40f }, { 0.22f, 0.18f, 0.14f }, 1.02f }, // 11 도른
-	{ { 0.42f, 0.36f, 0.24f }, { 0.80f, 0.67f, 0.54f }, { 0.24f, 0.17f, 0.11f }, 0.72f }, // 12 셀비
-	{ { 0.27f, 0.26f, 0.28f }, { 0.74f, 0.63f, 0.53f }, { 0.62f, 0.61f, 0.58f }, 0.90f }, // 13 하르윈
-	{ { 0.50f, 0.25f, 0.18f }, { 0.82f, 0.68f, 0.52f }, { 0.26f, 0.18f, 0.12f }, 1.02f }, // 14 플레이어
-};
 
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -216,11 +195,6 @@ static float Dist(float ax, float ay, float bx, float by)
 	return sqrtf(dx * dx + dy * dy);
 }
 
-static bool DrawableLess(const Drawable& a, const Drawable& b)
-{
-	return a.depth < b.depth;
-}
-
 static const int WRAP_LINES = 6;
 static const int WRAP_CHARS = 256;
 
@@ -281,7 +255,7 @@ static int WrapByWidth(Renderer& r, const wchar_t* text, float maxW, TextFont f)
 
 
 // ─────────────────────────────────────────────────────────────────────────
-//  초기화
+//  초기화 / 씬 구성
 // ─────────────────────────────────────────────────────────────────────────
 
 bool Game::FindFreeSpot(float& x, float& y, float radius) const
@@ -311,31 +285,25 @@ bool Game::FindFreeSpot(float& x, float& y, float radius) const
 	return false;
 }
 
-void Game::Init(Renderer* renderer, int windowW, int windowH)
+void Game::SpawnPropsFromWorld()
 {
-	m_R    = renderer;
-	m_WinW = windowW;
-	m_WinH = windowH;
+	m_Sigil = 0;
 
-	// 모델은 첫 실행에서만 절차적으로 굽고, 이후에는 캐시 파일에서 읽는다.
-	m_Models.LoadOrBuild("models.cache");
+	const std::vector<WorldObject>& objs = m_World.Objects();
 
-	m_Stats.Reset();
+	for (size_t i = 0; i < objs.size(); ++i)
+	{
+		PropActor* p = new PropActor(objs[i]);
+		m_Scene.Add(p);
 
-	m_World.Generate();
+		// 비석은 진행 상태에 따라 연출이 바뀌므로 따로 붙들어 둔다.
+		if (objs[i].type == OBJ_SIGIL)
+			m_Sigil = p;
+	}
+}
 
-	// ── 플레이어 ──
-	m_Player.x  = SPAWN_X;
-	m_Player.y  = SPAWN_Y;
-	m_Player.vx = 0.0f;
-	m_Player.vy = 0.0f;
-
-	m_Player.walkPhase  = 0.0f;
-	m_Player.walkAmount = 0.0f;
-	m_Player.bobPhase   = 0.0f;
-	m_Player.facing     = 1;
-
-	// ── NPC ──
+void Game::SpawnVillagers()
+{
 	struct NpcDef
 	{
 		const wchar_t* name;
@@ -364,129 +332,139 @@ void Game::Init(Renderer* renderer, int windowW, int windowH)
 		{ L"하르윈", 41.6f, 52.6f, 20, -1, 13, 0.8f },   // 남쪽
 	};
 
-	m_Npcs.clear();
-
 	for (int i = 0; i < NPC_COUNT; ++i)
 	{
-		Npc n;
-
-		n.name        = defs[i].name;
-		n.dialogueSet = defs[i].set;
-		n.witnessId   = defs[i].witness;
-		n.look        = defs[i].look;
-		n.talked      = false;
-		n.wander      = defs[i].wander;
-
 		// 배치 좌표가 건물에 물리면 주변 빈자리로 밀어낸다.
 		float px = defs[i].x;
 		float py = defs[i].y;
 		FindFreeSpot(px, py, BODY_RADIUS);
 
-		n.homeX = n.targetX = px;
-		n.homeY = n.targetY = py;
-		n.waitTimer = 1.0f + (float)i * 0.4f;
+		NpcActor* n = new NpcActor(defs[i].name, defs[i].set,
+		                           defs[i].witness, defs[i].look, defs[i].wander);
 
-		n.c.x  = px;
-		n.c.y  = py;
-		n.c.vx = 0.0f;
-		n.c.vy = 0.0f;
+		n->SetHome(px, py);
+		n->SetSeed((float)i * 1.7f);
 
-		n.c.walkPhase  = (float)i * 0.9f;
-		n.c.walkAmount = 0.0f;
-		n.c.bobPhase   = (float)i * 1.3f;
-		n.c.facing     = 1;
-
-		m_Npcs.push_back(n);
+		m_Scene.Add(n);
 	}
+}
 
-	// ── 야생 짐승 ──
+void Game::SpawnWildlife()
+{
 	// 마을에서 떨어진 빈 땅에 흩어 놓는다. 호수 근처에는 두지 않는다 —
 	// 짐승이 물가를 피한다는 것 자체가 마을 사람들의 증언과 맞물린다.
-	m_Beasts.clear();
+	unsigned int seed  = 0xC0FFEEu;
+	int          made  = 0;
+	int          guard = 0;
 
+	while (made < BEAST_COUNT && guard < 4000)
 	{
-		unsigned int seed  = 0xC0FFEEu;
-		int          guard = 0;
+		++guard;
 
-		while ((int)m_Beasts.size() < BEAST_COUNT && guard < 4000)
-		{
-			++guard;
+		seed = seed * 1664525u + 1013904223u;
+		float a = (float)((seed >> 8) % 6283) * 0.001f;
 
-			seed = seed * 1664525u + 1013904223u;
-			float a = (float)((seed >> 8) % 6283) * 0.001f;
+		seed = seed * 1664525u + 1013904223u;
+		float d = 20.0f + (float)((seed >> 8) % 2600) * 0.01f;
 
-			seed = seed * 1664525u + 1013904223u;
-			float d = 20.0f + (float)((seed >> 8) % 2600) * 0.01f;
+		float bx = VILLAGE_CX + cosf(a) * d;
+		float by = VILLAGE_CY + sinf(a) * d;
 
-			float bx = VILLAGE_CX + cosf(a) * d;
-			float by = VILLAGE_CY + sinf(a) * d;
+		if (bx < 4.0f || by < 4.0f || bx > MAP_W - 4.0f || by > MAP_H - 4.0f)
+			continue;
 
-			if (bx < 4.0f || by < 4.0f || bx > MAP_W - 4.0f || by > MAP_H - 4.0f)
-				continue;
+		if (Dist(bx, by, SIGIL_X, SIGIL_Y) < 22.0f)
+			continue;
 
-			if (Dist(bx, by, SIGIL_X, SIGIL_Y) < 22.0f)
-				continue;
+		if (!m_World.IsOpenGround(bx, by))
+			continue;
 
-			if (!m_World.IsOpenGround(bx, by))
-				continue;
+		int kind = (made % 4 == 0) ? BEAST_CROW
+		         : (made % 4 == 2) ? BEAST_WOLF
+		                           : BEAST_DEER;
 
-			Beast b;
-			int   i = (int)m_Beasts.size();
+		BeastActor* b = new BeastActor(kind);
 
-			b.kind = (i % 4 == 0) ? BEAST_CROW
-			       : (i % 4 == 1) ? BEAST_DEER
-			       : (i % 4 == 2) ? BEAST_WOLF
-			                      : BEAST_DEER;
+		b->SetHome(bx, by);
+		b->SetSeed((float)made * 2.3f);
 
-			b.homeX = b.targetX = bx;
-			b.homeY = b.targetY = by;
+		m_Scene.Add(b);
 
-			b.waitTimer = (float)(i % 5) * 0.8f;
-			b.alert     = 0.0f;
-			b.speed     = (b.kind == BEAST_WOLF) ? 2.2f : (b.kind == BEAST_DEER ? 2.6f : 1.6f);
-
-			b.c.x  = bx;
-			b.c.y  = by;
-			b.c.vx = 0.0f;
-			b.c.vy = 0.0f;
-
-			b.c.walkPhase  = (float)i;
-			b.c.walkAmount = 0.0f;
-			b.c.bobPhase   = (float)i * 0.7f;
-			b.c.facing     = 1;
-
-			m_Beasts.push_back(b);
-		}
+		++made;
 	}
+}
 
-	// ── 광원 목록 ──
+void Game::BuildLights()
+{
 	// 매 프레임 오브젝트를 훑지 않도록 미리 뽑아 둔다.
 	m_Lights.clear();
 
+	const std::vector<WorldObject>& objs = m_World.Objects();
+
+	for (size_t i = 0; i < objs.size(); ++i)
 	{
-		const std::vector<WorldObject>& objs = m_World.Objects();
+		const WorldObject& o = objs[i];
 
-		for (size_t i = 0; i < objs.size(); ++i)
+		if (o.type == OBJ_CAMPFIRE)
 		{
-			const WorldObject& o = objs[i];
-
-			if (o.type == OBJ_CAMPFIRE)
-			{
-				LightSource l = { o.x, o.y, 1.00f, 0.58f, 0.24f, 210.0f, 0.55f, true };
-				m_Lights.push_back(l);
-			}
-			else if (o.type == OBJ_LANTERN)
-			{
-				LightSource l = { o.x, o.y, 1.00f, 0.74f, 0.36f, 120.0f, 0.34f, true };
-				m_Lights.push_back(l);
-			}
-			else if (o.type == OBJ_INN || o.type == OBJ_HOUSE || o.type == OBJ_CHAPEL)
-			{
-				LightSource l = { o.x, o.y + 0.6f, 0.98f, 0.72f, 0.36f, 92.0f, 0.16f, false };
-				m_Lights.push_back(l);
-			}
+			LightSource l = { o.x, o.y, 1.00f, 0.58f, 0.24f, 210.0f, 0.55f, true };
+			m_Lights.push_back(l);
+		}
+		else if (o.type == OBJ_LANTERN)
+		{
+			LightSource l = { o.x, o.y, 1.00f, 0.74f, 0.36f, 120.0f, 0.34f, true };
+			m_Lights.push_back(l);
+		}
+		else if (o.type == OBJ_INN || o.type == OBJ_HOUSE || o.type == OBJ_CHAPEL)
+		{
+			LightSource l = { o.x, o.y + 0.6f, 0.98f, 0.72f, 0.36f, 92.0f, 0.16f, false };
+			m_Lights.push_back(l);
 		}
 	}
+}
+
+void Game::BuildVillageScene()
+{
+	m_Level = LEVEL_VILLAGE;
+	Prof::SetLabel("village");
+
+	m_World.Generate();
+
+	// Scene::Clear 가 기존 액터를 전부 지우므로, 붙들고 있던 포인터도 함께 버린다.
+	m_Scene.Clear();
+	m_Player = 0;
+	m_Sigil  = 0;
+
+	m_FocusNpc   = 0;
+	m_FocusSigil = false;
+	m_TalkingNpc = 0;
+
+	SpawnPropsFromWorld();
+	SpawnVillagers();
+	SpawnWildlife();
+	BuildLights();
+
+	m_Player = new PlayerActor();
+	m_Player->x = m_World.SpawnX();
+	m_Player->y = m_World.SpawnY();
+	m_Player->combatEnabled = false;
+	m_Scene.Add(m_Player);
+
+	m_CamReady = false;
+}
+
+void Game::Init(Renderer* renderer, int windowW, int windowH)
+{
+	m_R    = renderer;
+	m_WinW = windowW;
+	m_WinH = windowH;
+
+	// 모델은 첫 실행에서만 절차적으로 굽고, 이후에는 캐시 파일에서 읽는다.
+	m_Models.LoadOrBuild("models.cache");
+
+	m_Stats.Reset();
+
+	BuildVillageScene();
 
 	// ── 분위기 입자 ──
 	m_Motes.resize(MOTE_COUNT);
@@ -504,7 +482,7 @@ void Game::Init(Renderer* renderer, int windowW, int windowH)
 		m.kind = 0;
 	}
 
-	m_Draws.reserve(4096);
+	m_Query.reserve(64);
 }
 
 void Game::Resize(int windowW, int windowH)
@@ -515,26 +493,63 @@ void Game::Resize(int windowW, int windowH)
 
 
 // ─────────────────────────────────────────────────────────────────────────
+//  컨텍스트
+// ─────────────────────────────────────────────────────────────────────────
+
+UpdateContext Game::MakeUpdateContext()
+{
+	UpdateContext ctx;
+
+	ctx.world  = &m_World;
+	ctx.scene  = &m_Scene;
+	ctx.stats  = &m_Stats;
+	ctx.player = m_Player;
+
+	ctx.time    = m_Time;
+	ctx.playerX = (m_Player != 0) ? m_Player->WorldX() : 0.0f;
+	ctx.playerY = (m_Player != 0) ? m_Player->WorldY() : 0.0f;
+
+	ctx.paused = m_DialogueOpen || m_StatsOpen;
+
+	return ctx;
+}
+
+RenderContext Game::MakeRenderContext(float ox, float oy)
+{
+	RenderContext ctx;
+
+	ctx.r      = m_R;
+	ctx.models = &m_Models;
+
+	ctx.originX = ox;
+	ctx.originY = oy;
+	ctx.time    = m_Time;
+
+	ctx.viewX = (m_Player != 0) ? m_Player->WorldX() : 0.0f;
+	ctx.viewY = (m_Player != 0) ? m_Player->WorldY() : 0.0f;
+
+	ctx.winW = m_WinW;
+	ctx.winH = m_WinH;
+
+	return ctx;
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────
 //  갱신
 // ─────────────────────────────────────────────────────────────────────────
 
-void Game::StepAnim(Character& c, float dt, bool moving)
-{
-	float target = moving ? 1.0f : 0.0f;
-
-	c.walkAmount += (target - c.walkAmount) * Clamp01(dt * 9.0f);
-
-	if (moving)
-		c.walkPhase += dt * 9.0f;
-}
-
 void Game::Update(float dt)
 {
+	PROF_SCOPE(PROF_UPDATE);
+
 	m_Time += dt;
 
-	if (m_TitleTimer > 0.0f) m_TitleTimer -= dt;
-	if (m_ToastTimer > 0.0f) m_ToastTimer -= dt;
-	if (m_EndTimer  >= 0.0f) m_EndTimer  += dt;
+	if (m_TitleTimer   > 0.0f) m_TitleTimer   -= dt;
+	if (m_ToastTimer   > 0.0f) m_ToastTimer   -= dt;
+	if (m_LevelUpTimer > 0.0f) m_LevelUpTimer -= dt;
+	if (m_RuinIntro    > 0.0f) m_RuinIntro    -= dt;
+	if (m_EndTimer    >= 0.0f) m_EndTimer     += dt;
 
 	if (Input::Pressed('j'))
 		m_JournalOpen = !m_JournalOpen;
@@ -551,45 +566,67 @@ void Game::Update(float dt)
 			ReturnToVillage();
 	}
 
+	// ── 대화 / 상호작용 ──
 	if (m_DialogueOpen)
 	{
-		// 대화 중에는 이동을 멈춘다.
-		m_Player.vx = 0.0f;
-		m_Player.vy = 0.0f;
-		StepAnim(m_Player, dt, false);
-
 		if (Input::Pressed('e') || Input::Pressed(' '))
 			AdvanceDialogue();
 	}
 	else
 	{
-		UpdatePlayer(dt);
 		UpdateInteraction();
 
 		if (Input::Pressed('e'))
 		{
-			if (m_FocusNpc >= 0)
+			if (m_FocusNpc != 0)
 				StartDialogue(DialogueSetForNpc(m_FocusNpc), m_FocusNpc);
 			else if (m_FocusSigil)
-				StartDialogue(DialogueSetForSigil(), -1);
+				StartDialogue(DialogueSetForSigil(), 0);
 		}
 	}
 
-	if (m_Level == LEVEL_VILLAGE)
+	if (m_Level == LEVEL_RUIN)
+		UpdateRuinInput();
+
+	// ── 씬 ──
+	UpdateContext ctx = MakeUpdateContext();
+
+	m_Scene.Update(dt, ctx);
+
+	if (m_Level == LEVEL_RUIN)
 	{
-		UpdateNpcs(dt);
-		UpdateBeasts(dt);
-	}
-	else
-	{
-		UpdateRuin(dt);
+		PROF_SCOPE(PROF_UPD_PICKUP);
+		CollectPickups();
 	}
 
-	UpdateMotes(dt);
+	m_Scene.Reap();
+
+	{
+		PROF_SCOPE(PROF_UPD_MOTES);
+		UpdateMotes(dt);
+	}
+
+	if (m_Player != 0)
+	{
+		m_Killed = m_Player->kills;
+
+		// 신호는 읽은 쪽이 내린다. 액터가 스스로 지우면 몬스터가 먼저 갱신된
+		// 프레임에서 신호가 한 번도 읽히지 않고 사라진다.
+		if (m_Player->respawned)
+		{
+			m_Player->respawned = false;
+
+			m_CamReady = false;
+			Toast(L"정신을 잃었다 — 입구에서 깨어난다");
+		}
+	}
 
 	// ── 카메라 — 플레이어를 부드럽게 따라간다 ──
-	float targetCamX = IsoScreenX(m_Player.x, m_Player.y);
-	float targetCamY = IsoScreenY(m_Player.x, m_Player.y);
+	float px = (m_Player != 0) ? m_Player->WorldX() : 0.0f;
+	float py = (m_Player != 0) ? m_Player->WorldY() : 0.0f;
+
+	float targetCamX = IsoScreenX(px, py);
+	float targetCamY = IsoScreenY(px, py);
 
 	if (!m_CamReady)
 	{
@@ -612,7 +649,7 @@ void Game::Update(float dt)
 	if (m_Level == LEVEL_VILLAGE)
 	{
 		// 마을에서는 비석에 가까울수록 무거워진다.
-		float d = Dist(m_Player.x, m_Player.y, SIGIL_X, SIGIL_Y);
+		float d = Dist(px, py, SIGIL_X, SIGIL_Y);
 		target  = 1.0f - Clamp01((d - 5.0f) / 22.0f);
 
 		// 동전을 쥔 뒤로는 완전히 걷히지 않는다.
@@ -623,277 +660,77 @@ void Game::Update(float dt)
 	m_Dread += (target - m_Dread) * Clamp01(dt * 1.8f);
 }
 
-void Game::MoveWithCollision(Character& c, float dx, float dy, float radius)
-{
-	// 축을 나눠 처리해야 벽을 따라 미끄러진다.
-	if (dx != 0.0f && !m_World.Blocked(c.x + dx, c.y, radius))
-		c.x += dx;
-
-	if (dy != 0.0f && !m_World.Blocked(c.x, c.y + dy, radius))
-		c.y += dy;
-}
-
-void Game::UpdatePlayer(float dt)
-{
-	float ix = 0.0f;
-	float iy = 0.0f;
-
-	// 쿼터뷰에서는 화면 기준으로 걷는 느낌이 자연스럽다.
-	// W = 화면 위쪽 = 월드 (-x, -y)
-	if (Input::Held('w')) { ix -= 1.0f; iy -= 1.0f; }
-	if (Input::Held('s')) { ix += 1.0f; iy += 1.0f; }
-	if (Input::Held('a')) { ix -= 1.0f; iy += 1.0f; }
-	if (Input::Held('d')) { ix += 1.0f; iy -= 1.0f; }
-
-	float len    = sqrtf(ix * ix + iy * iy);
-	bool  moving = false;
-
-	if (len > 0.0001f)
-	{
-		ix /= len;
-		iy /= len;
-
-		float beforeX = m_Player.x;
-		float beforeY = m_Player.y;
-
-		MoveWithCollision(m_Player, ix * PLAYER_SPEED * dt, iy * PLAYER_SPEED * dt, BODY_RADIUS);
-
-		m_Player.vx = m_Player.x - beforeX;
-		m_Player.vy = m_Player.y - beforeY;
-
-		moving = (fabsf(m_Player.vx) + fabsf(m_Player.vy)) > 0.0002f;
-
-		float screenDir = IsoScreenX(ix, iy);
-
-		if (screenDir >  0.01f) m_Player.facing =  1;
-		if (screenDir < -0.01f) m_Player.facing = -1;
-	}
-	else
-	{
-		m_Player.vx = 0.0f;
-		m_Player.vy = 0.0f;
-	}
-
-	StepAnim(m_Player, dt, moving);
-}
-
-void Game::UpdateNpcs(float dt)
-{
-	for (size_t i = 0; i < m_Npcs.size(); ++i)
-	{
-		Npc& n = m_Npcs[i];
-
-		// 말을 거는 중이면 가만히 서서 플레이어 쪽을 본다.
-		if (m_DialogueOpen && m_TalkingNpc == (int)i)
-		{
-			n.c.vx = 0.0f;
-			n.c.vy = 0.0f;
-			StepAnim(n.c, dt, false);
-
-			float sd = IsoScreenX(m_Player.x - n.c.x, m_Player.y - n.c.y);
-
-			if (sd >  0.01f) n.c.facing =  1;
-			if (sd < -0.01f) n.c.facing = -1;
-
-			continue;
-		}
-
-		// 집 주변을 배회한다.
-		n.waitTimer -= dt;
-
-		if (n.waitTimer <= 0.0f)
-		{
-			float a = (float)((i * 37 + (int)(m_Time * 10.0f)) % 628) * 0.01f;
-			float r = n.wander * (0.35f + 0.65f * ((float)((i * 53 + (int)m_Time) % 100) / 100.0f));
-
-			n.targetX = n.homeX + cosf(a) * r;
-			n.targetY = n.homeY + sinf(a) * r;
-
-			n.waitTimer = 2.4f + (float)((i * 17) % 6);
-		}
-
-		float dx = n.targetX - n.c.x;
-		float dy = n.targetY - n.c.y;
-		float d  = sqrtf(dx * dx + dy * dy);
-
-		bool moving = false;
-
-		if (d > 0.12f)
-		{
-			float step = NPC_SPEED * dt;
-			float mx   = dx / d * step;
-			float my   = dy / d * step;
-
-			float beforeX = n.c.x;
-			float beforeY = n.c.y;
-
-			MoveWithCollision(n.c, mx, my, BODY_RADIUS * 0.8f);
-
-			n.c.vx = n.c.x - beforeX;
-			n.c.vy = n.c.y - beforeY;
-
-			moving = (fabsf(n.c.vx) + fabsf(n.c.vy)) > 0.0001f;
-
-			// 벽에 막혀 제자리면 다음 목적지를 새로 뽑는다.
-			if (!moving)
-				n.waitTimer = 0.0f;
-
-			float screenDir = IsoScreenX(mx, my);
-
-			if (screenDir >  0.001f) n.c.facing =  1;
-			if (screenDir < -0.001f) n.c.facing = -1;
-		}
-		else
-		{
-			n.c.vx = 0.0f;
-			n.c.vy = 0.0f;
-		}
-
-		StepAnim(n.c, dt, moving);
-	}
-}
-
-void Game::UpdateBeasts(float dt)
-{
-	for (size_t i = 0; i < m_Beasts.size(); ++i)
-	{
-		Beast& b = m_Beasts[i];
-
-		float toPlayer = Dist(b.c.x, b.c.y, m_Player.x, m_Player.y);
-
-		// 종마다 사람을 의식하는 거리가 다르다.
-		float notice = (b.kind == BEAST_DEER) ? 13.0f
-		             : (b.kind == BEAST_WOLF) ? 10.0f
-		                                      : 7.0f;
-
-		float wantAlert = Clamp01((notice - toPlayer) / notice);
-		b.alert += (wantAlert - b.alert) * Clamp01(dt * 2.5f);
-
-		bool fleeing = false;
-
-		if (toPlayer < notice * 0.62f && b.kind != BEAST_WOLF)
-		{
-			// 사슴과 까마귀는 달아난다.
-			float dx = b.c.x - m_Player.x;
-			float dy = b.c.y - m_Player.y;
-			float d  = sqrtf(dx * dx + dy * dy);
-
-			if (d > 0.01f)
-			{
-				b.targetX = b.c.x + dx / d * 7.0f;
-				b.targetY = b.c.y + dy / d * 7.0f;
-
-				fleeing = true;
-			}
-		}
-		else if (toPlayer < notice * 0.45f && b.kind == BEAST_WOLF)
-		{
-			// 늑대는 물러서되 등을 보이지 않는다 — 아주 가까울 때만 거리를 벌린다.
-			float dx = b.c.x - m_Player.x;
-			float dy = b.c.y - m_Player.y;
-			float d  = sqrtf(dx * dx + dy * dy);
-
-			if (d > 0.01f)
-			{
-				b.targetX = b.c.x + dx / d * 3.5f;
-				b.targetY = b.c.y + dy / d * 3.5f;
-			}
-		}
-		else
-		{
-			b.waitTimer -= dt;
-
-			if (b.waitTimer <= 0.0f)
-			{
-				float a = (float)((i * 53 + (int)(m_Time * 13.0f)) % 628) * 0.01f;
-				float r = 2.0f + (float)((i * 31 + (int)m_Time) % 60) * 0.09f;
-
-				b.targetX = b.homeX + cosf(a) * r;
-				b.targetY = b.homeY + sinf(a) * r;
-
-				b.waitTimer = 2.0f + (float)((i * 11) % 7);
-			}
-		}
-
-		float dx = b.targetX - b.c.x;
-		float dy = b.targetY - b.c.y;
-		float d  = sqrtf(dx * dx + dy * dy);
-
-		bool moving = false;
-
-		if (d > 0.15f)
-		{
-			float speed = b.speed * (fleeing ? 2.0f : (0.55f + b.alert * 0.5f));
-			float step  = speed * dt;
-			float mx    = dx / d * step;
-			float my    = dy / d * step;
-
-			float beforeX = b.c.x;
-			float beforeY = b.c.y;
-
-			MoveWithCollision(b.c, mx, my, BODY_RADIUS * 0.7f);
-
-			b.c.vx = b.c.x - beforeX;
-			b.c.vy = b.c.y - beforeY;
-
-			moving = (fabsf(b.c.vx) + fabsf(b.c.vy)) > 0.0001f;
-
-			if (!moving)
-				b.waitTimer = 0.0f;
-
-			float screenDir = IsoScreenX(mx, my);
-
-			if (screenDir >  0.001f) b.c.facing =  1;
-			if (screenDir < -0.001f) b.c.facing = -1;
-		}
-		else
-		{
-			b.c.vx = 0.0f;
-			b.c.vy = 0.0f;
-		}
-
-		// 걷기 위상은 종마다 속도가 다르다.
-		float target = moving ? 1.0f : 0.0f;
-		b.c.walkAmount += (target - b.c.walkAmount) * Clamp01(dt * 9.0f);
-
-		if (moving)
-			b.c.walkPhase += dt * (b.kind == BEAST_CROW ? 13.0f : 11.0f);
-	}
-}
-
 void Game::UpdateInteraction()
 {
-	m_FocusNpc   = -1;
+	m_FocusNpc   = 0;
 	m_FocusSigil = false;
 
 	// 폐허에는 말 걸 상대도 비석도 없다.
-	if (m_Level == LEVEL_RUIN)
+	if (m_Level == LEVEL_RUIN || m_Player == 0)
 		return;
 
-	float best = TALK_RANGE;
+	float px = m_Player->WorldX();
+	float py = m_Player->WorldY();
 
-	for (size_t i = 0; i < m_Npcs.size(); ++i)
+	// 변수 이름을 near 로 두면 안 된다 — <windows.h> 가 near / far 를
+	// 빈 매크로로 정의해 두어서 선언문이 통째로 깨진다. DrawText 와 같은 함정이다.
+	Actor* nearest = m_Scene.FindNearest(px, py, TALK_RANGE, ACTOR_NPC);
+
+	float bestD = TALK_RANGE;
+
+	if (nearest != 0)
 	{
-		float d = Dist(m_Player.x, m_Player.y, m_Npcs[i].c.x, m_Npcs[i].c.y);
-
-		if (d < best)
-		{
-			best = d;
-			m_FocusNpc = (int)i;
-		}
+		m_FocusNpc = (NpcActor*)nearest;
+		bestD = Dist(px, py, nearest->WorldX(), nearest->WorldY());
 	}
 
-	float ds = Dist(m_Player.x, m_Player.y, SIGIL_X, SIGIL_Y);
-
-	if (ds < best)
+	// 비석이 더 가까우면 그쪽이 이긴다.
+	if (Dist(px, py, SIGIL_X, SIGIL_Y) < bestD)
 	{
-		m_FocusNpc   = -1;
+		m_FocusNpc   = 0;
 		m_FocusSigil = true;
+	}
+}
+
+void Game::CollectPickups()
+{
+	if (m_Player == 0)
+		return;
+
+	m_Scene.QueryNear(m_Player->WorldX(), m_Player->WorldY(),
+	                  PICKUP_RANGE, ACTOR_PICKUP, m_Query);
+
+	for (size_t i = 0; i < m_Query.size(); ++i)
+	{
+		PickupActor* p = (PickupActor*)m_Query[i];
+
+		p->alive = false;
+
+		if (p->PickupKind() == 0)
+		{
+			if (m_Stats.GainXp(p->Value()))
+			{
+				m_LevelUpTimer = 2.6f;
+				Toast(L"레벨이 올랐다 — C 키로 능력치 분배");
+			}
+		}
+		else if (p->PickupKind() == 1)
+		{
+			m_Stats.coins += p->Value();
+		}
+		else
+		{
+			++m_Stats.potions;
+			Toast(L"회복약을 주웠다");
+		}
 	}
 }
 
 void Game::UpdateMotes(float dt)
 {
+	float px = (m_Player != 0) ? m_Player->WorldX() : 0.0f;
+	float py = (m_Player != 0) ? m_Player->WorldY() : 0.0f;
+
 	for (int i = 0; i < (int)m_Motes.size(); ++i)
 	{
 		Mote& m = m_Motes[i];
@@ -906,8 +743,8 @@ void Game::UpdateMotes(float dt)
 			float a = (float)((i * 71 + (int)(m_Time * 97.0f)) % 628) * 0.01f;
 			float r = 3.0f + (float)((i * 13 + (int)(m_Time * 31.0f)) % 150) * 0.1f;
 
-			m.x = m_Player.x + cosf(a) * r;
-			m.y = m_Player.y + sinf(a) * r;
+			m.x = px + cosf(a) * r;
+			m.y = py + sinf(a) * r;
 			m.z = 0.2f + (float)((i * 29) % 100) * 0.022f;
 
 			m.vx = (((float)((i * 7  + (int)m_Time) % 100) / 100.0f) - 0.5f) * 0.25f;
@@ -918,7 +755,9 @@ void Game::UpdateMotes(float dt)
 			m.life    = m.maxLife;
 
 			// 위치에 따라 성격이 달라진다.
-			if (Dist(m.x, m.y, SIGIL_X, SIGIL_Y) < 16.0f)
+			if (m_Level == LEVEL_RUIN)
+				m.kind = 1;
+			else if (Dist(m.x, m.y, SIGIL_X, SIGIL_Y) < 16.0f)
 				m.kind = 1;                        // 호수 쪽 — 차가운 재
 			else if (Dist(m.x, m.y, 41.0f, 43.0f) < 5.0f)
 				m.kind = 2;                        // 모닥불 불티
@@ -945,10 +784,13 @@ void Game::UpdateMotes(float dt)
 //  대화 / 퀘스트
 // ─────────────────────────────────────────────────────────────────────────
 
-int Game::DialogueSetForNpc(int npcIndex) const
+int Game::DialogueSetForNpc(const NpcActor* npc) const
 {
+	if (npc == 0)
+		return 12;
+
 	// 미렌만 진행 단계에 따라 대사가 갈린다.
-	if (npcIndex == 0)
+	if (npc->DialogueSet() == 0)
 	{
 		switch (m_Stage)
 		{
@@ -960,7 +802,7 @@ int Game::DialogueSetForNpc(int npcIndex) const
 		}
 	}
 
-	return m_Npcs[npcIndex].dialogueSet;
+	return npc->DialogueSet();
 }
 
 int Game::DialogueSetForSigil() const
@@ -971,14 +813,18 @@ int Game::DialogueSetForSigil() const
 	return 10;
 }
 
-void Game::StartDialogue(int setIndex, int npcIndex)
+void Game::StartDialogue(int setIndex, NpcActor* npc)
 {
 	m_DialogueOpen = true;
 	m_DialogueSet  = setIndex;
 	m_DialogueLine = 0;
-	m_TalkingNpc   = npcIndex;
+	m_TalkingNpc   = npc;
+
+	if (npc != 0)
+		npc->talking = true;
 
 	m_JournalOpen = false;
+	m_StatsOpen   = false;
 }
 
 void Game::AdvanceDialogue()
@@ -990,12 +836,23 @@ void Game::AdvanceDialogue()
 	if (m_DialogueLine < set.count)
 		return;
 
-	int finished = m_DialogueSet;
+	int       finished = m_DialogueSet;
+	NpcActor* speaker  = m_TalkingNpc;
+
+	if (speaker != 0)
+		speaker->talking = false;
 
 	m_DialogueOpen = false;
 	m_DialogueSet  = -1;
 	m_DialogueLine = 0;
-	m_TalkingNpc   = -1;
+	m_TalkingNpc   = 0;
+
+	// 증인 표시는 방금 대화한 상대에게 직접 남긴다.
+	if (speaker != 0 && speaker->WitnessId() >= 0 && !speaker->talked)
+	{
+		speaker->talked = true;
+		++m_WitnessCount;
+	}
 
 	OnDialogueFinished(finished);
 }
@@ -1015,35 +872,20 @@ void Game::OnDialogueFinished(int setIndex)
 	case 4:
 	case 5:
 	case 6:
-	{
-		int witness = (setIndex == 4) ? 0 : (setIndex == 5 ? 1 : 2);
-
-		for (size_t i = 0; i < m_Npcs.size(); ++i)
-		{
-			if (m_Npcs[i].witnessId != witness || m_Npcs[i].talked)
-				continue;
-
-			m_Npcs[i].talked = true;
-			++m_WitnessCount;
-
-			if (m_WitnessCount >= 3)
-			{
-				if (m_Stage == QS_ASK_VILLAGERS)
-				{
-					m_Stage = QS_GO_TO_SHORE;
-					Toast(L"세 사람의 증언을 모두 들었다 — 호숫가로");
-				}
-			}
-			else if (m_Stage == QS_ASK_VILLAGERS)
-			{
-				Toast(L"증언 기록됨");
-			}
-
+		if (m_Stage != QS_ASK_VILLAGERS)
 			break;
+
+		if (m_WitnessCount >= 3)
+		{
+			m_Stage = QS_GO_TO_SHORE;
+			Toast(L"세 사람의 증언을 모두 들었다 — 호숫가로");
+		}
+		else
+		{
+			Toast(L"증언 기록됨");
 		}
 
 		break;
-	}
 
 	// 비석에서 동전을 얻었다
 	case 11:
@@ -1079,17 +921,41 @@ void Game::Toast(const wchar_t* text)
 
 void Game::Render()
 {
+	PROF_SCOPE(PROF_RENDER);
+
+	float px = (m_Player != 0) ? m_Player->WorldX() : 0.0f;
+	float py = (m_Player != 0) ? m_Player->WorldY() : 0.0f;
+
 	// ── 씬 : 오프스크린 버퍼에 그린다 ──
 	m_R->BeginScene(0.026f, 0.032f, 0.044f);
 
 	float ox = (float)m_WinW * 0.5f  - m_CamX;
 	float oy = (float)m_WinH * 0.52f - m_CamY;
 
-	Draw::Tiles(*m_R, m_World, ox, oy, m_WinW, m_WinH, m_Time, m_Player.x, m_Player.y);
+	{
+		PROF_SCOPE(PROF_RND_TILES);
+		Draw::Tiles(*m_R, m_World, ox, oy, m_WinW, m_WinH, m_Time, px, py);
+	}
 
-	RenderGroundGlow(ox, oy);
-	RenderSorted(ox, oy);
-	RenderMotes(ox, oy);
+	{
+		PROF_SCOPE(PROF_RND_GLOW);
+		RenderGroundGlow(ox, oy);
+	}
+
+	// 비석 연출은 진행 상태를 따라간다.
+	if (m_Sigil != 0)
+	{
+		m_Sigil->sigilTaken     = m_HasCoin;
+		m_Sigil->sigilHighlight = (m_Stage == QS_GO_TO_SHORE);
+	}
+
+	RenderContext rctx = MakeRenderContext(ox, oy);
+	m_Scene.Render(rctx);
+
+	{
+		PROF_SCOPE(PROF_RND_MOTES);
+		RenderMotes(ox, oy);
+	}
 
 	m_R->EndScene();
 
@@ -1097,17 +963,23 @@ void Game::Render()
 	m_R->PostProcess(m_Dread, m_Time);
 
 	// ── UI 는 보정 위에 얹는다 ──
-	RenderUI();
+	{
+		PROF_SCOPE(PROF_RND_UI);
+		RenderUI();
+	}
 }
 
 void Game::RenderGroundGlow(float ox, float oy)
 {
+	float px = (m_Player != 0) ? m_Player->WorldX() : 0.0f;
+	float py = (m_Player != 0) ? m_Player->WorldY() : 0.0f;
+
 	// 모닥불 · 등불 · 창문에서 새어 나오는 빛
 	for (size_t i = 0; i < m_Lights.size(); ++i)
 	{
 		const LightSource& l = m_Lights[i];
 
-		if (Dist(l.x, l.y, m_Player.x, m_Player.y) > 34.0f)
+		if (Dist(l.x, l.y, px, py) > 34.0f)
 			continue;
 
 		float sx = ox + IsoScreenX(l.x, l.y);
@@ -1123,8 +995,8 @@ void Game::RenderGroundGlow(float ox, float oy)
 
 	// 플레이어의 랜턴
 	{
-		float sx = ox + IsoScreenX(m_Player.x, m_Player.y);
-		float sy = oy + IsoScreenY(m_Player.x, m_Player.y);
+		float sx = ox + IsoScreenX(px, py);
+		float sy = oy + IsoScreenY(px, py);
 
 		Draw::LightPool(*m_R, sx, sy, 150.0f, 0.98f, 0.72f, 0.36f, 0.30f);
 	}
@@ -1143,188 +1015,19 @@ void Game::RenderGroundGlow(float ox, float oy)
 	}
 
 	// 경험치 구슬은 스스로 바닥을 밝힌다.
-	for (size_t i = 0; i < m_Pickups.size(); ++i)
+	m_Scene.QueryNear(px, py, 26.0f, ACTOR_PICKUP, m_Query);
+
+	for (size_t i = 0; i < m_Query.size(); ++i)
 	{
-		const Pickup& p = m_Pickups[i];
+		PickupActor* p = (PickupActor*)m_Query[i];
 
-		if (p.taken || p.kind != 0)
+		if (p->PickupKind() != 0)
 			continue;
 
-		if (Dist(p.x, p.y, m_Player.x, m_Player.y) > 26.0f)
-			continue;
-
-		float sx = ox + IsoScreenX(p.x, p.y);
-		float sy = oy + IsoScreenY(p.x, p.y);
+		float sx = ox + IsoScreenX(p->WorldX(), p->WorldY());
+		float sy = oy + IsoScreenY(p->WorldX(), p->WorldY());
 
 		Draw::LightPool(*m_R, sx, sy, 60.0f, 0.26f, 0.90f, 0.86f, 0.18f);
-	}
-}
-
-void Game::RenderSorted(float ox, float oy)
-{
-	m_Draws.clear();
-
-	const std::vector<WorldObject>& objs = m_World.Objects();
-	const float margin = 220.0f;
-
-	// ── 화면에 걸치는 오브젝트만 목록에 올린다 ──
-	for (size_t i = 0; i < objs.size(); ++i)
-	{
-		const WorldObject& o = objs[i];
-
-		float sx = ox + IsoScreenX(o.x, o.y);
-		float sy = oy + IsoScreenY(o.x, o.y);
-
-		if (sx < -margin || sx > (float)m_WinW + margin ||
-		    sy < -margin || sy > (float)m_WinH + margin)
-			continue;
-
-		Drawable d;
-		d.depth = IsoDepth(o.x, o.y);
-		d.kind  = 0;
-		d.index = (int)i;
-
-		m_Draws.push_back(d);
-	}
-
-	for (size_t i = 0; i < m_Npcs.size(); ++i)
-	{
-		Drawable d;
-		d.depth = IsoDepth(m_Npcs[i].c.x, m_Npcs[i].c.y);
-		d.kind  = 1;
-		d.index = (int)i;
-
-		m_Draws.push_back(d);
-	}
-
-	for (size_t i = 0; i < m_Beasts.size(); ++i)
-	{
-		Drawable d;
-		d.depth = IsoDepth(m_Beasts[i].c.x, m_Beasts[i].c.y);
-		d.kind  = 3;
-		d.index = (int)i;
-
-		m_Draws.push_back(d);
-	}
-
-	for (size_t i = 0; i < m_Monsters.size(); ++i)
-	{
-		if (!m_Monsters[i].alive && m_Monsters[i].deathTimer <= 0.0f)
-			continue;
-
-		Drawable d;
-		d.depth = IsoDepth(m_Monsters[i].c.x, m_Monsters[i].c.y);
-		d.kind  = 4;
-		d.index = (int)i;
-
-		m_Draws.push_back(d);
-	}
-
-	for (size_t i = 0; i < m_Pickups.size(); ++i)
-	{
-		if (m_Pickups[i].taken)
-			continue;
-
-		Drawable d;
-		d.depth = IsoDepth(m_Pickups[i].x, m_Pickups[i].y);
-		d.kind  = 5;
-		d.index = (int)i;
-
-		m_Draws.push_back(d);
-	}
-
-	{
-		Drawable d;
-		d.depth = IsoDepth(m_Player.x, m_Player.y);
-		d.kind  = 2;
-		d.index = 0;
-
-		m_Draws.push_back(d);
-	}
-
-	// painter's algorithm — 깊이가 작은 것(뒤)부터 그린다.
-	std::sort(m_Draws.begin(), m_Draws.end(), DrawableLess);
-
-	bool highlight = (m_Stage == QS_GO_TO_SHORE);
-
-	for (size_t i = 0; i < m_Draws.size(); ++i)
-	{
-		const Drawable& d = m_Draws[i];
-
-		if (d.kind == 0)
-		{
-			const WorldObject& o = objs[d.index];
-
-			float sx  = ox + IsoScreenX(o.x, o.y);
-			float sy  = oy + IsoScreenY(o.x, o.y);
-			float lit = Draw::LightAt(o.x, o.y, m_Player.x, m_Player.y);
-
-			Draw::Object(*m_R, m_Models, o, sx, sy, lit, m_Time, m_HasCoin, highlight);
-		}
-		else if (d.kind == 1)
-		{
-			const Npc& n = m_Npcs[d.index];
-
-			float sx  = ox + IsoScreenX(n.c.x, n.c.y);
-			float sy  = oy + IsoScreenY(n.c.x, n.c.y);
-			float lit = Draw::LightAt(n.c.x, n.c.y, m_Player.x, m_Player.y);
-
-			Draw::Person(*m_R, m_Models, sx, sy, lit, m_Time, LOOKS[n.look],
-			             n.c.facing, n.c.walkPhase, n.c.walkAmount, n.c.bobPhase, false);
-		}
-		else if (d.kind == 3)
-		{
-			const Beast& b = m_Beasts[d.index];
-
-			float sx  = ox + IsoScreenX(b.c.x, b.c.y);
-			float sy  = oy + IsoScreenY(b.c.x, b.c.y);
-			float lit = Draw::LightAt(b.c.x, b.c.y, m_Player.x, m_Player.y);
-
-			Draw::Beast(*m_R, m_Models, sx, sy, lit, m_Time, b.kind,
-			            b.c.facing, b.c.walkPhase, b.c.walkAmount, b.alert);
-		}
-		else if (d.kind == 4)
-		{
-			const Monster& m = m_Monsters[d.index];
-
-			float sx  = ox + IsoScreenX(m.c.x, m.c.y);
-			float sy  = oy + IsoScreenY(m.c.x, m.c.y);
-			float lit = Draw::LightAt(m.c.x, m.c.y, m_Player.x, m_Player.y);
-
-			// 죽는 중이면 가라앉으며 사라진다.
-			if (!m.alive)
-			{
-				float t = Clamp01(m.deathTimer / 0.5f);
-				sy += (1.0f - t) * 8.0f;
-				lit *= t;
-			}
-
-			Draw::Monster(*m_R, m_Models, sx, sy, lit, m_Time, m.kind,
-			              m.c.facing, m.c.walkPhase, m.c.walkAmount, m.hurtFlash);
-		}
-		else if (d.kind == 5)
-		{
-			const Pickup& p = m_Pickups[d.index];
-
-			float sx  = ox + IsoScreenX(p.x, p.y);
-			float sy  = oy + IsoScreenY(p.x, p.y);
-			float lit = Draw::LightAt(p.x, p.y, m_Player.x, m_Player.y);
-
-			Draw::Pickup(*m_R, m_Models, sx, sy, lit, m_Time, p.kind, p.bobSeed);
-		}
-		else
-		{
-			float sx = ox + IsoScreenX(m_Player.x, m_Player.y);
-			float sy = oy + IsoScreenY(m_Player.x, m_Player.y);
-
-			Draw::Person(*m_R, m_Models, sx, sy, 1.0f, m_Time, LOOKS[14],
-			             m_Player.facing, m_Player.walkPhase, m_Player.walkAmount,
-			             m_Player.bobPhase, true);
-
-			// 공격 궤적은 플레이어 위에 얹는다.
-			if (m_AttackAnim >= 0.0f)
-				Draw::AttackArc(*m_R, sx, sy, m_Player.facing, m_AttackAnim);
-		}
 	}
 }
 
@@ -1439,14 +1142,14 @@ void Game::RenderUI()
 
 	// ── 조작 안내 ──
 	m_R->DrawString(20.0f, (float)m_WinH - 16.0f,
-	                L"WASD 이동     E 상호작용     J 일지     Esc 종료",
+	                L"WASD 이동     E 상호작용     J 일지     0 폐허로     Esc 종료",
 	                0.46f, 0.45f, 0.42f, 1.0f, FONT_SMALL);
 
 	// ── 상호작용 프롬프트 ──
-	if (!m_DialogueOpen && (m_FocusNpc >= 0 || m_FocusSigil))
+	if (!m_DialogueOpen && (m_FocusNpc != 0 || m_FocusSigil))
 	{
-		if (m_FocusNpc >= 0)
-			swprintf(buf, 192, L"[E]  %s 에게 말 걸기", m_Npcs[m_FocusNpc].name);
+		if (m_FocusNpc != 0)
+			swprintf(buf, 192, L"[E]  %s 에게 말 걸기", m_FocusNpc->Name());
 		else
 			swprintf(buf, 192, L"[E]  비석 살펴보기");
 

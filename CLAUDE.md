@@ -130,9 +130,24 @@ x64 라이브러리가 **한 번도 커밋된 적이 없었다.** 로컬에만 �
 
 ### 4-5. 주의할 함정
 
-- **`DrawText` 는 Win32 매크로다** (`winuser.h` 가 `DrawTextW` 로 치환).
-  멤버 함수 이름으로 쓰면 windows.h 를 포함한 번역 단위에서만 이름이 달라져
-  "멤버가 아닙니다" 로 터진다. → `DrawString` 으로 명명. `GetObject`, `LoadImage` 등도 동일.
+- **`<windows.h>` 의 매크로가 이름을 먹는다.** 이 프로젝트에서 이미 세 번 터졌다.
+  GLEW 가 windows.h 를 끌어오므로 **거의 모든 번역 단위가 영향권**이다.
+
+  | 이름 | 정체 | 증상 |
+  |---|---|---|
+  | `DrawText` | `winuser.h` → `DrawTextW` | 멤버 함수명으로 쓰면 windows.h 를 포함한 TU 에서만 이름이 달라져 "멤버가 아닙니다" |
+  | `near` / `far` | `minwindef.h` → 빈 매크로 | `Actor* near = ...` 가 `Actor* = ...` 로 깨짐 |
+  | `DC_TEXT` | `winuser.h` → `0x0008` | enum 값이 상수로 치환되어 enum 전체가 파싱 실패 |
+
+  **새 이름을 지을 때는 흔한 Win32 접두사를 피한다** — `DC_`, `HT_`, `SM_`, `WM_`,
+  `CS_`, `WS_`, 그리고 `Draw*` · `Get*` · `Create*` 로 시작하는 짧은 이름.
+  프로젝트 고유 접두사(`DRAWCALL_`)를 쓰거나 이름을 길게 잡는다.
+  터졌을 때 증상이 엉뚱한 곳의 구문 오류로 나타나므로, **원인 불명의 구문 오류를 만나면
+  해당 식별자가 SDK 헤더에 있는지부터 확인한다.**
+
+  ```bash
+  grep -rn "#define  *<이름>" "C:/Program Files (x86)/Windows Kits/10/Include"
+  ```
 - **Windows 타입은 헤더에 노출하지 않는다.** `Font.h` 는 `HDC`/`HFONT` 를 `void*` 로 감춰
   windows.h 가 다른 번역 단위로 새지 않게 한다.
 - **글리프는 그리기 전에 미리 구워야 한다.** 드로우 루프 안에서 `Bake` 가 돌면

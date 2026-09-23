@@ -187,6 +187,7 @@ if "$(Platform)"=="x64" (if exist "$(ProjectDir)Dependencies\x64\glew32.dll" xco
     <ClInclude Include="Input.h" />
     <ClInclude Include="IsoMath.h" />
     <ClInclude Include="Model.h" />
+    <ClInclude Include="Profiler.h" />
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="Scene.h" />
     <ClInclude Include="Stats.h" />
@@ -203,6 +204,7 @@ if "$(Platform)"=="x64" (if exist "$(ProjectDir)Dependencies\x64\glew32.dll" xco
     <ClCompile Include="Input.cpp" />
     <ClCompile Include="Level1.cpp" />
     <ClCompile Include="Model.cpp" />
+    <ClCompile Include="Profiler.cpp" />
     <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="Scene.cpp" />
     <ClCompile Include="SimpleGame.cpp" />

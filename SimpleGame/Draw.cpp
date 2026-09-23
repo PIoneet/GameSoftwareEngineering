@@ -2,6 +2,7 @@
 #include "Draw.h"
 #include "Renderer.h"
 #include "IsoMath.h"
+#include "Profiler.h"
 
 #include <cmath>
 
@@ -236,6 +237,9 @@ void Draw::Tiles(Renderer& r, const World& world, float ox, float oy,
 {
 	const float margin = 110.0f;
 
+	// 맵 전체를 도는 비용이 화면 크기와 무관하게 고정이라는 점을 드러낸다.
+	Prof::Add(PROF_TILE_SCANNED, MAP_W * MAP_H);
+
 	for (int ty = 0; ty < MAP_H; ++ty)
 	for (int tx = 0; tx < MAP_W; ++tx)
 	{
@@ -248,6 +252,8 @@ void Draw::Tiles(Renderer& r, const World& world, float ox, float oy,
 		if (sx < -margin || sx > (float)winW + margin ||
 		    sy < -margin || sy > (float)winH + margin)
 			continue;
+
+		Prof::Add(PROF_TILE_DRAWN);
 
 		TileType t = world.Tile(tx, ty);
 		float    v = world.Variation(tx, ty);
