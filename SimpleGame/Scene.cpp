@@ -7,9 +7,9 @@
 
 namespace
 {
-	bool DepthLess(const Actor* a, const Actor* b)
+	bool DepthLess(const DepthEntry& a, const DepthEntry& b)
 	{
-		return a->Depth() < b->Depth();
+		return a.depth < b.depth;
 	}
 
 	// 부모가 죽으면 서브트리도 함께 죽인다.
@@ -121,7 +121,13 @@ void Scene::Collect(Actor* a, const RenderContext& ctx)
 	             && sy < (float)ctx.winH + a->cullPad;
 
 	if (onScreen)
-		m_Visible.push_back(a);
+	{
+		// 여기서 a 는 방금 WorldX/WorldY 를 읽어 캐시에 올라와 있다.
+		// 깊이를 따라가는 역참조는 이 한 번으로 끝난다.
+		DepthEntry e = { a->Depth(), a };
+
+		m_Visible.push_back(e);
+	}
 
 	const std::vector<Actor*>& kids = a->Children();
 
@@ -148,7 +154,7 @@ void Scene::Render(const RenderContext& ctx)
 		PROF_SCOPE(PROF_RND_ACTORS);
 
 		for (size_t i = 0; i < m_Visible.size(); ++i)
-			m_Visible[i]->Render(ctx);
+			m_Visible[i].actor->Render(ctx);
 	}
 
 	m_DrawnLastFrame = (int)m_Visible.size();

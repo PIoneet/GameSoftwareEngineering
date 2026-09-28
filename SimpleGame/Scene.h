@@ -3,6 +3,18 @@
 #include <vector>
 #include "Actor.h"
 
+// 정렬 목록 한 칸. 깊이를 포인터 옆에 값으로 들고 있는다.
+//
+// 액터는 저마다 따로 할당돼 힙에 흩어져 있다. 비교 함수가 Depth() 를 부르면
+// 비교 한 번에 포인터 두 개를 따라가느라 캐시 미스가 난다 — 577개를 정렬하는
+// 비교 5천여 회가 실측 0.28ms 였다. Collect 에서 깊이를 한 번만 읽어 적어 두면
+// 정렬은 연속된 메모리만 만진다.
+struct DepthEntry
+{
+	float  depth;
+	Actor* actor;
+};
+
 // 액터를 소유하고 계층·갱신·정렬·그리기를 관장한다.
 //
 // 트리는 부모/자식 포인터로만 표현하고, 소유는 평평한 벡터가 맡는다.
@@ -49,8 +61,8 @@ private:
 
 	Actor* m_Root;
 
-	std::vector<Actor*> m_All;      // 소유
-	std::vector<Actor*> m_Visible;  // 프레임마다 재사용해 할당을 줄인다
+	std::vector<Actor*>     m_All;      // 소유
+	std::vector<DepthEntry> m_Visible;  // 프레임마다 재사용해 할당을 줄인다
 
 	int m_DrawnLastFrame = 0;
 };

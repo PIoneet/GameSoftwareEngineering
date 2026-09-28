@@ -1,4 +1,4 @@
-#include "stdafx.h"
+﻿#include "stdafx.h"
 #include "Game.h"
 #include "Renderer.h"
 #include "Draw.h"
@@ -584,6 +584,11 @@ void Game::Update(float dt)
 				StartDialogue(DialogueSetForSigil(), 0);
 		}
 	}
+
+	// 마을에서는 공격이 잠겨 있다. 그런데 무반응은 "잠김" 과 "고장" 이 구분되지
+	// 않는다 — 실제로 키가 안 먹는 줄 알았다는 보고가 있었다. 왜 안 되는지 말해 준다.
+	if (m_Level == LEVEL_VILLAGE && !m_DialogueOpen && Input::Pressed(' '))
+		Toast(L"여기서는 휘두를 일이 없다");
 
 	if (m_Level == LEVEL_RUIN)
 		UpdateRuinInput();

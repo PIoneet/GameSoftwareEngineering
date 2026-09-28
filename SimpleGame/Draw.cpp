@@ -237,106 +237,147 @@ void Draw::Tiles(Renderer& r, const World& world, float ox, float oy,
 {
 	const float margin = 110.0f;
 
-	// 맵 전체를 도는 비용이 화면 크기와 무관하게 고정이라는 점을 드러낸다.
-	Prof::Add(PROF_TILE_SCANNED, MAP_W * MAP_H);
+	// 화면 사각형을 타일 좌표로 되돌려, 훑는 범위를 화면 크기에 묶는다.
+	//
+	//   sx = ox + (wx - wy) * TILE_W/2     u = wx - wy 는 화면 X 에만 걸린다
+	//   sy = oy + (wx + wy) * TILE_H/2     v = wx + wy 는 화면 Y 에만 걸린다
+	//
+	// 그래서 화면 사각형은 (u, v) 공간에서도 사각형이다. 행마다 두 구간을
+	// 교차시키면 그 줄에서 실제로 보이는 x 범위가 그대로 나온다.
+	// 맵을 넓혀도 순회량은 따라 늘지 않는다.
+	const float uMin = (-margin - ox) * 2.0f / TILE_W;
+	const float uMax = ((float)winW + margin - ox) * 2.0f / TILE_W;
+	const float vMin = (-margin - oy) * 2.0f / TILE_H;
+	const float vMax = ((float)winH + margin - oy) * 2.0f / TILE_H;
 
-	for (int ty = 0; ty < MAP_H; ++ty)
-	for (int tx = 0; tx < MAP_W; ++tx)
+	// 가장자리는 한 칸씩 넉넉히 잡는다. 안쪽 화면 판정이 한 번 더 거른다.
+	int yBegin = (int)floorf((vMin - uMax) * 0.5f) - 1;
+	int yEnd   = (int)ceilf ((vMax - uMin) * 0.5f) + 1;
+
+	if (yBegin < 0)     yBegin = 0;
+	if (yEnd   > MAP_H) yEnd   = MAP_H;
+
+	for (int ty = yBegin; ty < yEnd; ++ty)
 	{
-		float wx = (float)tx + 0.5f;
-		float wy = (float)ty + 0.5f;
+		float rowY = (float)ty + 0.5f;
 
-		float sx = ox + IsoScreenX(wx, wy);
-		float sy = oy + IsoScreenY(wx, wy);
+		// wx - rowY 가 [uMin, uMax] 안, wx + rowY 가 [vMin, vMax] 안.
+		// 두 조건을 wx 에 대해 풀어 교집합을 잡는다.
+		float lo = uMin + rowY;
+		float hi = uMax + rowY;
 
-		if (sx < -margin || sx > (float)winW + margin ||
-		    sy < -margin || sy > (float)winH + margin)
+		if (vMin - rowY > lo) lo = vMin - rowY;
+		if (vMax - rowY < hi) hi = vMax - rowY;
+
+		int xBegin = (int)floorf(lo) - 1;
+		int xEnd   = (int)ceilf (hi) + 1;
+
+		if (xBegin < 0)     xBegin = 0;
+		if (xEnd   > MAP_W) xEnd   = MAP_W;
+
+		if (xBegin >= xEnd)
 			continue;
 
-		Prof::Add(PROF_TILE_DRAWN);
+		// 이제 훑는 양이 곧 그리는 양이다 — waste_ratio 가 0 에 붙어야 한다.
+		Prof::Add(PROF_TILE_SCANNED, xEnd - xBegin);
 
-		TileType t = world.Tile(tx, ty);
-		float    v = world.Variation(tx, ty);
-
-		float cr, cg, cb;
-
-		switch (t)
+		for (int tx = xBegin; tx < xEnd; ++tx)
 		{
-		case TILE_MEADOW:  cr = 0.176f; cg = 0.229f; cb = 0.133f; break;
-		case TILE_PATH:    cr = 0.246f; cg = 0.209f; cb = 0.156f; break;
-		case TILE_SAND:    cr = 0.274f; cg = 0.245f; cb = 0.183f; break;
-		case TILE_SHALLOW: cr = 0.102f; cg = 0.216f; cb = 0.224f; break;
-		case TILE_WATER:   cr = 0.050f; cg = 0.124f; cb = 0.150f; break;
-		case TILE_FLOOR:   cr = 0.152f; cg = 0.148f; cb = 0.156f; break;
-		case TILE_WALL:    cr = 0.058f; cg = 0.056f; cb = 0.062f; break;
-		case TILE_GRASS:
-		default:           cr = 0.141f; cg = 0.196f; cb = 0.126f; break;
-		}
+			float wx = (float)tx + 0.5f;
+			float wy = (float)ty + 0.5f;
 
-		float lit = Draw::LightAt(wx, wy, px, py) * (0.88f + v * 0.24f);
+			float sx = ox + IsoScreenX(wx, wy);
+			float sy = oy + IsoScreenY(wx, wy);
 
-		// 물결은 셰이더가 그린다 — CPU 에서 타일마다 sin 을 돌리지 않는다.
-		if (t == TILE_WATER || t == TILE_SHALLOW)
-		{
-			float depth = (t == TILE_WATER) ? 1.0f : 0.0f;
+			if (sx < -margin || sx > (float)winW + margin ||
+			    sy < -margin || sy > (float)winH + margin)
+				continue;
 
-			r.DrawWater(sx, sy, TILE_W, TILE_H, wx, wy, depth, lit, time,
-			            cr * lit, cg * lit, cb * lit);
-			continue;
-		}
+			Prof::Add(PROF_TILE_DRAWN);
 
-		r.DrawDiamond(sx, sy, TILE_W, TILE_H, cr * lit, cg * lit, cb * lit, 1.0f);
+			TileType t = world.Tile(tx, ty);
+			float    v = world.Variation(tx, ty);
 
-		// ── 지면 디테일 ──
-		if (t == TILE_PATH)
-		{
-			// 자갈
-			if (v > 0.86f)
+			float cr, cg, cb;
+
+			switch (t)
 			{
-				r.DrawQuad(sx - 6.0f, sy - 2.0f, 3.0f, 2.0f,
-				           0.34f * lit, 0.30f * lit, 0.24f * lit, 0.85f);
-
-				r.DrawQuad(sx + 4.0f, sy + 3.0f, 2.0f, 2.0f,
-				           0.32f * lit, 0.28f * lit, 0.22f * lit, 0.85f);
+			case TILE_MEADOW:  cr = 0.176f; cg = 0.229f; cb = 0.133f; break;
+			case TILE_PATH:    cr = 0.246f; cg = 0.209f; cb = 0.156f; break;
+			case TILE_SAND:    cr = 0.274f; cg = 0.245f; cb = 0.183f; break;
+			case TILE_SHALLOW: cr = 0.102f; cg = 0.216f; cb = 0.224f; break;
+			case TILE_WATER:   cr = 0.050f; cg = 0.124f; cb = 0.150f; break;
+			case TILE_FLOOR:   cr = 0.152f; cg = 0.148f; cb = 0.156f; break;
+			case TILE_WALL:    cr = 0.058f; cg = 0.056f; cb = 0.062f; break;
+			case TILE_GRASS:
+			default:           cr = 0.141f; cg = 0.196f; cb = 0.126f; break;
 			}
-		}
-		else if (t == TILE_SAND)
-		{
-			// 모래 알갱이
-			if (v > 0.88f)
-			{
-				r.DrawQuad(sx - 3.0f, sy, 2.0f, 2.0f,
-				           0.36f * lit, 0.33f * lit, 0.26f * lit, 0.8f);
-			}
-		}
-		else if (t == TILE_FLOOR)
-		{
-			// 깨진 포석
-			if (v > 0.78f)
-			{
-				r.DrawDiamond(sx, sy, TILE_W * 0.42f, TILE_H * 0.42f,
-				              0.190f * lit, 0.186f * lit, 0.196f * lit, 0.8f);
-			}
-			else if (v < 0.16f)
-			{
-				r.DrawDiamond(sx, sy, TILE_W * 0.60f, TILE_H * 0.60f,
-				              0.112f * lit, 0.110f * lit, 0.118f * lit, 0.7f);
-			}
-		}
-		else if (t == TILE_GRASS || t == TILE_MEADOW)
-		{
-			// 풀포기 — 바람에 같이 눕는다
-			if (v > 0.80f)
-			{
-				float sway = sinf(time * 1.1f + (float)tx * 0.7f + (float)ty * 0.4f) * 1.6f;
 
-				float gr = 0.118f * lit;
-				float gg = 0.192f * lit;
-				float gb = 0.110f * lit;
+			float lit = Draw::LightAt(wx, wy, px, py) * (0.88f + v * 0.24f);
 
-				r.DrawQuad(sx - 7.0f + sway,        sy - 7.0f, 1.8f, 7.0f, gr, gg, gb, 0.9f);
-				r.DrawQuad(sx - 1.0f + sway * 1.2f, sy - 9.0f, 1.8f, 9.0f, gr, gg, gb, 0.9f);
-				r.DrawQuad(sx + 5.0f + sway,        sy - 6.0f, 1.8f, 6.0f, gr, gg, gb, 0.9f);
+			// 물결은 셰이더가 그린다 — CPU 에서 타일마다 sin 을 돌리지 않는다.
+			if (t == TILE_WATER || t == TILE_SHALLOW)
+			{
+				float depth = (t == TILE_WATER) ? 1.0f : 0.0f;
+
+				r.DrawWater(sx, sy, TILE_W, TILE_H, wx, wy, depth, lit, time,
+				            cr * lit, cg * lit, cb * lit);
+				continue;
+			}
+
+			r.DrawDiamond(sx, sy, TILE_W, TILE_H, cr * lit, cg * lit, cb * lit, 1.0f);
+
+			// ── 지면 디테일 ──
+			if (t == TILE_PATH)
+			{
+				// 자갈
+				if (v > 0.86f)
+				{
+					r.DrawQuad(sx - 6.0f, sy - 2.0f, 3.0f, 2.0f,
+					           0.34f * lit, 0.30f * lit, 0.24f * lit, 0.85f);
+
+					r.DrawQuad(sx + 4.0f, sy + 3.0f, 2.0f, 2.0f,
+					           0.32f * lit, 0.28f * lit, 0.22f * lit, 0.85f);
+				}
+			}
+			else if (t == TILE_SAND)
+			{
+				// 모래 알갱이
+				if (v > 0.88f)
+				{
+					r.DrawQuad(sx - 3.0f, sy, 2.0f, 2.0f,
+					           0.36f * lit, 0.33f * lit, 0.26f * lit, 0.8f);
+				}
+			}
+			else if (t == TILE_FLOOR)
+			{
+				// 깨진 포석
+				if (v > 0.78f)
+				{
+					r.DrawDiamond(sx, sy, TILE_W * 0.42f, TILE_H * 0.42f,
+					              0.190f * lit, 0.186f * lit, 0.196f * lit, 0.8f);
+				}
+				else if (v < 0.16f)
+				{
+					r.DrawDiamond(sx, sy, TILE_W * 0.60f, TILE_H * 0.60f,
+					              0.112f * lit, 0.110f * lit, 0.118f * lit, 0.7f);
+				}
+			}
+			else if (t == TILE_GRASS || t == TILE_MEADOW)
+			{
+				// 풀포기 — 바람에 같이 눕는다
+				if (v > 0.80f)
+				{
+					float sway = sinf(time * 1.1f + (float)tx * 0.7f + (float)ty * 0.4f) * 1.6f;
+
+					float gr = 0.118f * lit;
+					float gg = 0.192f * lit;
+					float gb = 0.110f * lit;
+
+					r.DrawQuad(sx - 7.0f + sway,        sy - 7.0f, 1.8f, 7.0f, gr, gg, gb, 0.9f);
+					r.DrawQuad(sx - 1.0f + sway * 1.2f, sy - 9.0f, 1.8f, 9.0f, gr, gg, gb, 0.9f);
+					r.DrawQuad(sx + 5.0f + sway,        sy - 6.0f, 1.8f, 6.0f, gr, gg, gb, 0.9f);
+				}
 			}
 		}
 	}
