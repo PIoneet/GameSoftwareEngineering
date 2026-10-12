@@ -41,6 +41,11 @@ public:
 	void DrawQuad(float x, float y, float w, float h,
 	              float r, float g, float b, float a = 1.0f);
 
+	// 중심 (cx, cy) 를 축으로 angle(라디안) 만큼 돌린 사각형.
+	// angle 이 0 이면 세로로 선다. 칼날처럼 축에 정렬되지 않는 것에 쓴다.
+	void DrawQuadRot(float cx, float cy, float w, float h, float angle,
+	                 float r, float g, float b, float a = 1.0f);
+
 	// 아이소메트릭 지면 타일. (cx, cy) 는 마름모의 중심.
 	void DrawDiamond(float cx, float cy, float w, float h,
 	                 float r, float g, float b, float a = 1.0f);
@@ -86,8 +91,10 @@ private:
 	void   DestroyTargets();
 	void   DrawFullscreen(GLint attribLocation);
 
+	// rotCos/rotSin 을 기본값으로 두면 회전이 없는 것과 같다.
 	void   DrawUnitShape(GLuint vbo, int vertexCount, float x, float y, float w, float h,
-	                     float r, float g, float b, float a);
+	                     float r, float g, float b, float a,
+	                     float rotCos = 1.0f, float rotSin = 0.0f);
 
 	// 드로우 콜은 전부 이 문을 지난다. 여기서만 세면 빠뜨릴 곳이 없다.
 	// counter 는 ProfCounter (PROF_DC_*).
@@ -112,6 +119,7 @@ private:
 	GLint  m_SpriteUniRect   = -1;
 	GLint  m_SpriteUniColor  = -1;
 	GLint  m_SpriteUniRes    = -1;
+	GLint  m_SpriteUniRot    = -1;
 
 	// ── 텍스처 쿼드 (글리프) ──
 	GLuint m_TexProg      = 0;

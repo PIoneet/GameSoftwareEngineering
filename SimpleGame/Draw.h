@@ -91,6 +91,8 @@ namespace Draw
 	void Pickup(Renderer& r, const ModelLibrary& lib, float sx, float sy,
 	            float lit, float time, int kind, float bob);
 
-	// 플레이어 공격 궤적
-	void AttackArc(Renderer& r, float sx, float sy, int facing, float progress);
+	// 플레이어가 든 검. progress 가 0~1 이면 휘두르는 중, 음수면 내린 자세.
+	// scale 은 PersonLook::scale — 몸과 같은 비율로 커지고 작아진다.
+	void Sword(Renderer& r, float sx, float sy, float scale, int facing,
+	           float progress, float lit);
 }

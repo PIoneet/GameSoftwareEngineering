@@ -82,6 +82,11 @@ namespace Prof
 	// GPU 가 실제로 그린 시간은 못 잰다. 그건 타이머 질의로 따로 받는다.
 	void GpuFrameBegin();
 	void GpuFrameEnd();
+
+	// 마지막 1초 창의 요약값. 모니터가 같은 숫자를 쓰게 해 둔다.
+	float Fps();
+	float FrameMs();
+	float GpuMs();
 }
 
 // RAII 구역 타이머.

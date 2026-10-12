@@ -59,7 +59,14 @@ private:
 	void BuildVillageScene();
 	void SpawnPropsFromWorld();
 	void SpawnVillagers();
+	void SpawnVillageMonsters();
 	void SpawnWildlife();
+
+	// 거점 앞마당인지 — 몬스터 배치에서 걸러 낸다.
+	bool NearOutpost(float x, float y, float radius) const;
+
+	// 모니터로 내보낼 상태를 JSON 으로 말아 넘긴다.
+	void PushMonitorSnapshot();
 	void BuildLights();
 
 	UpdateContext MakeUpdateContext();
@@ -100,6 +107,13 @@ private:
 
 	Renderer*    m_R = 0;
 	World        m_World;
+
+	// 숨은 월드 상태 (STORY.md §13). UI 에 수치로 내보내지 않는다 —
+	// 플레이어는 몬스터 수와 사람들의 태도로만 눈치챈다.
+	HiddenState  m_Hidden;
+
+	// 스냅샷 주기. 매 프레임 1만 액터를 훑으면 재는 쪽이 더 비싸진다.
+	float m_MonitorTimer = 0.0f;
 	ModelLibrary m_Models;
 	Scene        m_Scene;
 

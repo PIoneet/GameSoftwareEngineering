@@ -55,9 +55,12 @@ struct WorldObject
 	int   variant;         // 색·형태 변주 시드
 };
 
-// 맵을 4배(면적)로 키웠다. 56x56 -> 112x112.
-const int MAP_W = 112;
-const int MAP_H = 112;
+// 맵을 다시 4배(면적)로 키웠다. 112x112 -> 224x224.
+//
+// 타일 순회는 화면에 보이는 범위만 돌기 때문에(Draw::Tiles) 맵이 커져도
+// 프레임 비용은 늘지 않는다. 늘어난 공간에는 외곽 거점을 둔다.
+const int MAP_W = 224;
+const int MAP_H = 224;
 
 // 충돌 조회용 공간 격자. 오브젝트가 수천 개가 되면 선형 탐색으로는 못 버틴다.
 const int GRID_CELL = 4;
@@ -73,6 +76,19 @@ const float SHORE_X    = 62.0f;   // 호숫가 — 길이 끝나는 곳
 const float SHORE_Y    = 66.0f;
 const float SIGIL_X    = 62.8f;   // 비석
 const float SIGIL_Y    = 66.8f;
+
+// ── 외곽 거점 ──
+// 마을 바깥의 세력별 근거지. Game 이 여기에 맞는 원형의 NPC 를 세운다.
+const float CAMP_BANDIT_X  = 150.0f;   // 까마귀발 산적단 야영지
+const float CAMP_BANDIT_Y  = 148.0f;
+const float SHRINE_CHOIR_X =  58.0f;   // 성가대 은신처 — 숲 속 폐사당
+const float SHRINE_CHOIR_Y = 150.0f;
+const float CAMP_SILENCE_X = 152.0f;   // 침묵의 수도회 순찰 야영지
+const float CAMP_SILENCE_Y =  54.0f;
+const float FARM_OUT_X     =  34.0f;   // 외딴 농가
+const float FARM_OUT_Y     = 128.0f;
+const float MARSH_X        = 186.0f;   // 늪 초입 — 약초꾼의 오두막
+const float MARSH_Y        = 184.0f;
 
 // 한 방의 범위 (양 끝 포함)
 struct Room
@@ -111,6 +127,10 @@ private:
 	void ForceSand(float cx, float cy, float radius);
 	void PlaceVillage();
 	void PlaceFarm();
+	void PlaceOutposts();
+
+	// 거점 주변을 비운다 — 숲이 야영지 위에 자라지 않게.
+	void ClearArea(float cx, float cy, float radius);
 	void PlaceForest();
 	void PlaceShore();
 	void BuildGrid();

@@ -30,6 +30,11 @@ namespace
 	double s_MaxFrameMs = 0.0;
 	double s_MinFrameMs = 1e9;
 
+	// 마지막으로 닫힌 창의 값. 출력을 꺼도 남는다 — 모니터가 읽는다.
+	double s_LastFps     = 0.0;
+	double s_LastFrameMs = 0.0;
+	double s_LastGpuMs   = -1.0;
+
 	// 켠 직후 몇 초는 CPU/GPU 클럭이 아직 올라오지 않아 프레임이 느리게 잡힌다.
 	// 창마다 경과 시간을 같이 찍어, 정상 상태의 수치인지 구분할 수 있게 한다.
 	Clock::time_point s_StartTime;
@@ -51,6 +56,24 @@ namespace
 	double Ratio(double part, double whole)
 	{
 		return (whole > 0.0) ? part / whole : 0.0;
+	}
+
+	// 1초 창을 비운다. 출력하든 안 하든 같은 자리에서 끊어야
+	// 켰다 껐다 할 때 수치가 튀지 않는다.
+	void ResetWindow()
+	{
+		s_Frames     = 0;
+		s_AccDt      = 0.0;
+		s_AccGpuMs   = 0.0;
+		s_GpuSamples = 0;
+		s_MaxFrameMs = 0.0;
+		s_MinFrameMs = 1e9;
+
+		for (int i = 0; i < PROF_ZONE_COUNT; ++i)
+			s_AccZoneMs[i] = 0.0;
+
+		for (int i = 0; i < PROF_COUNTER_COUNT; ++i)
+			s_AccCounter[i] = 0.0;
 	}
 }
 
@@ -77,6 +100,10 @@ void Prof::Shutdown()
 
 	s_GpuReady = false;
 }
+
+float Prof::Fps()     { return (float)s_LastFps; }
+float Prof::FrameMs() { return (float)s_LastFrameMs; }
+float Prof::GpuMs()   { return (float)s_LastGpuMs; }
 
 void Prof::SetEnabled(bool on) { s_Enabled = on; }
 bool Prof::Enabled()           { return s_Enabled; }
@@ -175,9 +202,8 @@ void Prof::EndFrame(float dt)
 {
 	ZoneEnd(PROF_FRAME);
 
-	if (!s_Enabled)
-		return;
-
+	// s_Enabled 는 "콘솔에 찍을지" 만 정한다. 집계는 늘 돌아야
+	// 모니터가 끈 동안에도 같은 숫자를 읽는다.
 	++s_Frames;
 	s_AccDt += (double)dt;
 
@@ -207,6 +233,10 @@ void Prof::EndFrame(float dt)
 	double frameMs  = Avg(s_AccZoneMs[PROF_FRAME], s_Frames);
 	double cpuMs    = frameMs;
 	double gpuMs    = (s_GpuSamples > 0) ? s_AccGpuMs / (double)s_GpuSamples : -1.0;
+
+	s_LastFps     = fps;
+	s_LastFrameMs = frameMs;
+	s_LastGpuMs   = gpuMs;
 
 	const char* bound = "unknown";
 
@@ -243,6 +273,12 @@ void Prof::EndFrame(float dt)
 	double cullRatio = 1.0 - Ratio(aVisible, aVisited);
 	double candPer   = Ratio(cCand, cCalls);
 	double scanPer   = Ratio(qScanned, qCalls);
+
+	if (!s_Enabled)
+	{
+		ResetWindow();
+		return;
+	}
 
 	printf("[PROF] ==================================================\n");
 
@@ -330,17 +366,5 @@ void Prof::EndFrame(float dt)
 		       "최적화 착수 시점.\n", frameMs);
 	}
 
-	// 다음 창을 위해 비운다.
-	s_Frames     = 0;
-	s_AccDt      = 0.0;
-	s_AccGpuMs   = 0.0;
-	s_GpuSamples = 0;
-	s_MaxFrameMs = 0.0;
-	s_MinFrameMs = 1e9;
-
-	for (int i = 0; i < PROF_ZONE_COUNT; ++i)
-		s_AccZoneMs[i] = 0.0;
-
-	for (int i = 0; i < PROF_COUNTER_COUNT; ++i)
-		s_AccCounter[i] = 0.0;
+	ResetWindow();
 }

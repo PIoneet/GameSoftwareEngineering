@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>라벤홀 모니터</title>
+<style>
+	:root {
+		--bg:      #14161b;
+		--panel:   #1c1f26;
+		--panel2:  #22262f;
+		--line:    #2d323d;
+		--text:    #d6d9e0;
+		--dim:     #828a99;
+		--accent:  #c8a86a;
+		--calm:    #5c8f6a;
+		--alert:   #c8a86a;
+		--hostile: #c87a4a;
+		--attack:  #c0504a;
+		--flee:    #6a7fb0;
+		--bad:     #c0504a;
+	}
+
+	* { box-sizing: border-box; }
+
+	body {
+		margin: 0;
+		padding: 16px;
+		background: var(--bg);
+		color: var(--text);
+		font: 13px/1.5 "Pretendard", "맑은 고딕", "Malgun Gothic", system-ui, sans-serif;
+	}
+
+	h1 {
+		margin: 0 0 4px;
+		font-size: 18px;
+		font-weight: 600;
+		letter-spacing: -0.01em;
+	}
+
+	.sub { color: var(--dim); font-size: 12px; margin-bottom: 16px; }
+	.sub b { color: var(--accent); font-weight: 600; }
+
+	.grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+		gap: 10px;
+		margin-bottom: 16px;
+	}
+
+	.card {
+		background: var(--panel);
+		border: 1px solid var(--line);
+		border-radius: 6px;
+		padding: 10px 12px;
+	}
+
+	.card .k { color: var(--dim); font-size: 11px; letter-spacing: 0.02em; }
+	.card .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+	.card .n { color: var(--dim); font-size: 11px; }
+
+	section { margin-bottom: 18px; }
+
+	h2 {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--dim);
+		margin: 0 0 8px;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+	}
+
+	table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+
+	th {
+		text-align: left;
+		font-weight: 500;
+		color: var(--dim);
+		font-size: 11px;
+		padding: 6px 8px;
+		border-bottom: 1px solid var(--line);
+		white-space: nowrap;
+	}
+
+	td {
+		padding: 5px 8px;
+		border-bottom: 1px solid #23262e;
+		white-space: nowrap;
+	}
+
+	tbody tr:hover { background: var(--panel2); }
+
+	.num { text-align: right; }
+
+	.pill {
+		display: inline-block;
+		padding: 1px 7px;
+		border-radius: 9px;
+		font-size: 11px;
+		font-weight: 600;
+	}
+
+	.s-calm    { background: #22321f; color: #8fc79c; }
+	.s-alert   { background: #332c1c; color: #e0c088; }
+	.s-hostile { background: #3a2a1c; color: #e8a070; }
+	.s-attack  { background: #3a1f1f; color: #f08a84; }
+	.s-flee    { background: #1f2538; color: #9db0e0; }
+
+	.tag { color: var(--dim); font-size: 11px; }
+	.warn { color: var(--bad); font-weight: 600; }
+	.dying { opacity: 0.4; text-decoration: line-through; }
+
+	/* 성향 막대 — 숫자보다 분포가 한눈에 들어온다 */
+	.bar { display: inline-block; width: 46px; height: 6px; background: #2b3038; border-radius: 3px; vertical-align: middle; }
+	.bar > i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+
+	.offline {
+		background: #3a1f1f;
+		border: 1px solid #5a2f2f;
+		color: #f0a8a4;
+		padding: 10px 12px;
+		border-radius: 6px;
+		margin-bottom: 14px;
+	}
+
+	.filters { margin-bottom: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+
+	.filters button {
+		background: var(--panel);
+		border: 1px solid var(--line);
+		color: var(--dim);
+		padding: 4px 10px;
+		border-radius: 999px;
+		font: inherit;
+		font-size: 11px;
+		cursor: pointer;
+	}
+
+	.filters button.on { background: var(--accent); border-color: var(--accent); color: #1a1a1a; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>라벤홀 모니터</h1>
+<div class="sub" id="head">연결 중…</div>
+
+<div id="offline" class="offline" style="display:none">
+	게임에 연결하지 못했습니다. 실행 중인지, 포트가 같은지 확인하세요.
+</div>
+
+<section>
+	<div class="grid" id="cards"></div>
+</section>
+
+<section>
+	<h2>지역별 상태</h2>
+	<table>
+		<thead>
+			<tr>
+				<th>지역</th>
+				<th class="num">NPC</th>
+				<th class="num">생존</th>
+				<th class="num">몹</th>
+				<th class="num">교전 중</th>
+				<th class="num">평균 겁</th>
+				<th class="num">평균 공격성</th>
+			</tr>
+		</thead>
+		<tbody id="districts"></tbody>
+	</table>
+</section>
+
+<section>
+	<h2>NPC</h2>
+	<div class="filters" id="filters"></div>
+	<table>
+		<thead>
+			<tr>
+				<th>이름</th>
+				<th>원형</th>
+				<th>세력</th>
+				<th>상태</th>
+				<th>지역</th>
+				<th class="num">HP</th>
+				<th class="num">위치</th>
+				<th>신앙</th>
+				<th>겁</th>
+				<th>공격성</th>
+				<th>충성</th>
+				<th>표식</th>
+			</tr>
+		</thead>
+		<tbody id="npcs"></tbody>
+	</table>
+</section>
+
+<script>
+const STATE_KO = { calm: "일상", alert: "경계", hostile: "적대", attack: "공격", flee: "도주" };
+const FACTION_KO  = { none: "—", party: "파티", choir: "성가대", silence: "수도회", bandit: "산적", monster: "몬스터" };
+// 표 안에서는 빈 칸처럼 보이는 편이 낫지만, 버튼으로는 이름이 있어야 누를 수 있다.
+const FACTION_BTN = { ...FACTION_KO, none: "무소속" };
+
+let filter = "all";
+let last = null;
+
+function bar(v) {
+	const pct = Math.round(Math.max(0, Math.min(1, v)) * 100);
+	return `<span class="bar"><i style="width:${pct}%"></i></span>`;
+}
+
+function card(k, v, n) {
+	return `<div class="card"><div class="k">${k}</div><div class="v">${v}</div><div class="n">${n || ""}</div></div>`;
+}
+
+function render(d) {
+	last = d;
+	document.getElementById("offline").style.display = "none";
+
+	const lv = d.level === "ruin" ? "폐허" : "마을";
+	document.getElementById("head").innerHTML =
+		`<b>${lv}</b> · 경과 ${d.t.toFixed(0)}초 · ${d.perf.fps.toFixed(0)} fps · ` +
+		`프레임 ${d.perf.frameMs.toFixed(2)}ms · GPU ${d.perf.gpuMs.toFixed(2)}ms · ` +
+		`액터 ${d.perf.actors.toLocaleString()} (그린 것 ${d.perf.drawn.toLocaleString()})`;
+
+	const mk = d.monsterByKind || {};
+	const mkTxt = Object.keys(mk).map(k => `${k} ${mk[k]}`).join(" · ");
+
+	document.getElementById("cards").innerHTML = [
+		card("NPC", `${d.counts.npcAlive} / ${d.counts.npc}`, "생존 / 전체"),
+		card("몬스터", `${d.counts.monsterAlive} / ${d.counts.monster}`, mkTxt),
+		card("야생 짐승", d.counts.beast, ""),
+		card("배치물", d.counts.prop.toLocaleString(), "나무·건물 등"),
+		card("플레이어", `${d.player.hp} / ${d.player.maxHp}`,
+		     `Lv.${d.player.level} · 처치 ${d.player.kills} · (${d.player.x}, ${d.player.y})`),
+		card("공포도", d.hidden.fear + (d.hidden.vigilante ? " ⚠" : ""),
+		     d.hidden.vigilante ? "자경단 결성" : "HV_FEAR"),
+		card("교단 세력", d.hidden.choir + (d.hidden.choirKilling ? " ⚠" : ""),
+		     d.hidden.choirKilling ? "마을 내 암살" : "HV_CHOIR"),
+		card("뒤척임", d.hidden.stir + (d.hidden.monstersRising ? " ⚠" : ""),
+		     d.hidden.monstersRising ? "몬스터 증가" : "HV_STIR"),
+	].join("");
+
+	document.getElementById("districts").innerHTML = d.districts.map(x => `
+		<tr>
+			<td>${x.name}</td>
+			<td class="num">${x.npc}</td>
+			<td class="num ${x.alive < x.npc ? "warn" : ""}">${x.alive}</td>
+			<td class="num">${x.monster}</td>
+			<td class="num ${x.hostile > 0 ? "warn" : ""}">${x.hostile}</td>
+			<td class="num">${x.avgFear.toFixed(2)}</td>
+			<td class="num">${x.avgAggression.toFixed(2)}</td>
+		</tr>`).join("");
+
+	// 필터 — 세력별로 추려 본다
+	const factions = ["all", ...new Set(d.npcs.map(n => n.faction))];
+	document.getElementById("filters").innerHTML = factions.map(f =>
+		`<button class="${filter === f ? "on" : ""}" data-f="${f}">${f === "all" ? "전체" : (FACTION_BTN[f] || f)}</button>`
+	).join("");
+
+	const rows = d.npcs.filter(n => filter === "all" || n.faction === filter);
+
+	document.getElementById("npcs").innerHTML = rows.map(n => `
+		<tr class="${n.dying ? "dying" : ""}">
+			<td>${n.name}</td>
+			<td class="tag">${n.arch}</td>
+			<td class="tag">${FACTION_KO[n.faction] || n.faction}</td>
+			<td><span class="pill s-${n.state}">${STATE_KO[n.state] || n.state}</span></td>
+			<td class="tag">${n.district}</td>
+			<td class="num ${n.hp < n.maxHp ? "warn" : ""}">${n.hp}/${n.maxHp}</td>
+			<td class="num tag">${n.x}, ${n.y}</td>
+			<td>${bar(n.faith)}</td>
+			<td>${bar(n.fear)}</td>
+			<td>${bar(n.aggression)}</td>
+			<td>${bar(n.loyalty)}</td>
+			<td class="tag">${[
+				n.tier !== "T3" ? n.tier : "",
+				n.covert ? "잠입신도" : "",
+				!n.tuned ? "외지인" : "",
+				n.erased ? "지워짐" : ""
+			].filter(Boolean).join(" · ")}</td>
+		</tr>`).join("");
+}
+
+document.getElementById("filters").addEventListener("click", e => {
+	const b = e.target.closest("button");
+
+	if (!b) return;
+
+	filter = b.dataset.f;
+
+	if (last) render(last);
+});
+
+async function poll() {
+	try {
+		const r = await fetch("/state.json", { cache: "no-store" });
+		render(await r.json());
+	} catch (err) {
+		document.getElementById("offline").style.display = "block";
+		document.getElementById("head").textContent = "연결 끊김";
+	}
+}
+
+poll();
+setInterval(poll, 1000);
+</script>
+
+</body>
+</html>

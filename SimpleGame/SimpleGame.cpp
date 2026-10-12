@@ -18,6 +18,7 @@ but WITHOUT ANY WARRANTY.
 #include "Input.h"
 #include "Game.h"
 #include "Profiler.h"
+#include "Monitor.h"
 
 static const int WINDOW_W = 1280;
 static const int WINDOW_H = 720;
@@ -61,6 +62,9 @@ void Idle(void)
 
 	g_Game->Update(dt);
 	Input::EndFrame();
+
+	// 브라우저 요청 처리. 받을 게 없으면 즉시 돌아온다.
+	Monitor::Poll();
 
 	glutPostRedisplay();
 }
@@ -133,6 +137,9 @@ int main(int argc, char **argv)
 	g_Game = new Game();
 	g_Game->Init(g_Renderer, WINDOW_W, WINDOW_H);
 
+	// 실패해도 게임은 그대로 돈다. 포트가 막혀 있으면 조용히 꺼진 채로 둔다.
+	Monitor::Start(8777);
+
 	Input::Reset();
 	glutIgnoreKeyRepeat(1);   // 키를 누르고 있어도 KeyDown 이 반복 발생하지 않게
 
@@ -149,6 +156,7 @@ int main(int argc, char **argv)
 	s_PrevTimeMs = glutGet(GLUT_ELAPSED_TIME);
 	glutMainLoop();
 
+	Monitor::Stop();
 	Prof::Shutdown();
 
 	delete g_Game;

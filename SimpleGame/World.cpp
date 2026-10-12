@@ -209,12 +209,21 @@ void World::Generate()
 	CarvePath(VILLAGE_CX, VILLAGE_CY, 30.0f, 56.0f, 1.2f);         // 밭
 	CarvePath(VILLAGE_CX, VILLAGE_CY, 60.0f, 32.0f, 1.1f);         // 동쪽 들길
 
+	// 외곽으로 뻗는 길. 중간에 갈라지는 지점을 두어 한 줄기로 보이지 않게 한다.
+	CarvePath(60.0f, 32.0f, CAMP_SILENCE_X, CAMP_SILENCE_Y, 1.2f);            // 동 — 수도회
+	CarvePath(SHORE_X, SHORE_Y, 110.0f, 120.0f, 1.2f);                        // 남동 — 호수 건너
+	CarvePath(110.0f, 120.0f, CAMP_BANDIT_X, CAMP_BANDIT_Y, 1.0f);            //      산적
+	CarvePath(110.0f, 120.0f, MARSH_X, MARSH_Y, 1.0f);                        //      늪
+	CarvePath(30.0f, 56.0f, FARM_OUT_X, FARM_OUT_Y, 1.1f);                    // 남 — 외딴 농가
+	CarvePath(FARM_OUT_X, FARM_OUT_Y, SHRINE_CHOIR_X, SHRINE_CHOIR_Y, 0.9f);  //      성가대
+
 	// 비석이 설 자리는 마른 모래로 만들어 둔다.
 	ForceSand(SIGIL_X, SIGIL_Y, 3.4f);
 
 	// ── 4) 배치 ─────────────────────────────────────────────────────
 	PlaceVillage();
 	PlaceFarm();
+	PlaceOutposts();
 	PlaceShore();
 	PlaceForest();
 
@@ -291,6 +300,148 @@ void World::PlaceFarm()
 
 	Add(OBJ_CRATE, 34.6f, 60.0f, 0.4f, 0.4f, 32.0f, 28.0f, true);
 	Add(OBJ_STUMP, 27.5f, 58.0f, 0.4f, 0.4f, 34.0f, 22.0f, true);
+}
+
+// 거점이 설 자리를 비운다.
+//
+// PlaceForest 는 m_NearPath 가 선 칸을 건너뛴다. 야영지를 길과 같은 취급으로
+// 표시해 두면 모닥불 위에 소나무가 자라는 일이 없다.
+void World::ClearArea(float cx, float cy, float radius)
+{
+	int x0 = (int)(cx - radius), x1 = (int)(cx + radius);
+	int y0 = (int)(cy - radius), y1 = (int)(cy + radius);
+
+	for (int y = y0; y <= y1; ++y)
+	for (int x = x0; x <= x1; ++x)
+	{
+		if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H)
+			continue;
+
+		float dx = (float)x + 0.5f - cx;
+		float dy = (float)y + 0.5f - cy;
+
+		if (dx * dx + dy * dy > radius * radius)
+			continue;
+
+		// 물가는 건드리지 않는다. 늪 오두막이 호수를 메우면 곤란하다.
+		if (m_Tiles[y][x] == TILE_WATER || m_Tiles[y][x] == TILE_SHALLOW)
+			continue;
+
+		m_NearPath[y][x] = true;
+	}
+}
+
+// 마을 바깥의 세력별 근거지 (STORY.md §2-3, §2-5-1).
+//
+// 각 거점은 "누가 사는가"가 배치로 읽혀야 한다 — 산적은 울타리 없이 불만 피우고,
+// 수도회는 줄을 맞춰 세우고, 성가대는 무너진 사당에 숨는다.
+void World::PlaceOutposts()
+{
+	// ── 까마귀발 산적단 야영지 ──
+	// 훔쳐 온 것들이 아무렇게나 쌓여 있다. 울타리는 반쪽뿐이다.
+	{
+		const float cx = CAMP_BANDIT_X, cy = CAMP_BANDIT_Y;
+
+		ClearArea(cx, cy, 9.0f);
+
+		Add(OBJ_CAMPFIRE, cx, cy, 0.7f, 0.7f, 50.0f, 44.0f, true);
+
+		Add(OBJ_CRATE, cx - 3.2f, cy - 2.0f, 0.4f, 0.4f, 34.0f, 30.0f, true);
+		Add(OBJ_CRATE, cx - 2.4f, cy + 2.8f, 0.4f, 0.4f, 30.0f, 26.0f, true);
+		Add(OBJ_CRATE, cx + 3.6f, cy + 1.2f, 0.4f, 0.4f, 32.0f, 28.0f, true);
+		Add(OBJ_CRATE, cx + 1.0f, cy - 3.6f, 0.4f, 0.4f, 28.0f, 24.0f, true);
+
+		Add(OBJ_STUMP, cx - 4.6f, cy + 0.4f, 0.4f, 0.4f, 36.0f, 24.0f, true);
+		Add(OBJ_STUMP, cx + 4.8f, cy - 1.6f, 0.4f, 0.4f, 34.0f, 22.0f, true);
+
+		// 반쪽짜리 방책 — 북쪽만 막았다
+		for (float x = cx - 5.0f; x <= cx + 5.0f; x += 1.0f)
+			Add(OBJ_FENCE, x, cy - 6.0f, 0.45f, 0.35f, 30.0f, 26.0f, true);
+
+		Add(OBJ_ROCK, cx - 7.0f, cy + 5.0f, 0.4f, 0.35f, 40.0f, 26.0f, true);
+		Add(OBJ_ROCK, cx + 6.4f, cy + 4.2f, 0.4f, 0.35f, 36.0f, 22.0f, true);
+	}
+
+	// ── 침묵의 수도회 순찰 야영지 ──
+	// 천막 대신 상자를 줄 맞춰 세우고, 게시판을 걸었다. 질서가 보이게.
+	{
+		const float cx = CAMP_SILENCE_X, cy = CAMP_SILENCE_Y;
+
+		ClearArea(cx, cy, 8.0f);
+
+		Add(OBJ_CAMPFIRE, cx, cy, 0.7f, 0.7f, 46.0f, 40.0f, true);
+		Add(OBJ_BOARD,    cx + 2.6f, cy - 3.0f, 0.5f, 0.4f, 48.0f, 56.0f, true);
+
+		for (int i = 0; i < 4; ++i)
+		{
+			float ox = -3.0f + (float)i * 2.0f;
+
+			Add(OBJ_CRATE, cx + ox, cy + 3.4f, 0.4f, 0.4f, 30.0f, 26.0f, true);
+		}
+
+		Add(OBJ_LANTERN, cx - 4.4f, cy - 1.0f, 0.35f, 0.35f, 26.0f, 62.0f, true);
+		Add(OBJ_LANTERN, cx + 4.4f, cy - 1.0f, 0.35f, 0.35f, 26.0f, 62.0f, true);
+
+		for (float y = cy - 5.0f; y <= cy + 5.0f; y += 1.0f)
+		{
+			Add(OBJ_FENCE, cx - 6.0f, y, 0.35f, 0.45f, 30.0f, 26.0f, true);
+			Add(OBJ_FENCE, cx + 6.0f, y, 0.35f, 0.45f, 30.0f, 26.0f, true);
+		}
+	}
+
+	// ── 성가대 은신처 ──
+	// 숲에 파묻힌 폐사당. 비석이 하나 서 있고 등불은 없다.
+	{
+		const float cx = SHRINE_CHOIR_X, cy = SHRINE_CHOIR_Y;
+
+		ClearArea(cx, cy, 8.0f);
+
+		Add(OBJ_CHAPEL, cx, cy - 1.0f, 1.9f, 1.9f, 140.0f, 158.0f, true);
+		Add(OBJ_SIGIL,  cx, cy + 3.4f, 0.5f, 0.5f,  48.0f,  58.0f, true);
+
+		Add(OBJ_ROCK, cx - 4.0f, cy + 2.6f, 0.4f, 0.35f, 38.0f, 24.0f, true);
+		Add(OBJ_ROCK, cx + 4.2f, cy + 3.0f, 0.4f, 0.35f, 34.0f, 22.0f, true);
+
+		Add(OBJ_PINE, cx - 6.0f, cy - 4.0f, 0.4f, 0.4f, 52.0f, 116.0f, true);
+		Add(OBJ_PINE, cx + 6.2f, cy - 3.4f, 0.4f, 0.4f, 50.0f, 110.0f, true);
+		Add(OBJ_PINE, cx - 5.4f, cy + 5.6f, 0.4f, 0.4f, 48.0f, 104.0f, true);
+	}
+
+	// ── 외딴 농가 ──
+	{
+		const float cx = FARM_OUT_X, cy = FARM_OUT_Y;
+
+		ClearArea(cx, cy, 9.0f);
+
+		Add(OBJ_HOUSE, cx, cy, 1.6f, 1.6f, 120.0f, 104.0f, true);
+		Add(OBJ_WELL,  cx + 3.6f, cy + 2.6f, 0.8f, 0.8f, 54.0f, 50.0f, true);
+
+		Add(OBJ_CRATE, cx - 3.0f, cy + 2.4f, 0.4f, 0.4f, 32.0f, 28.0f, true);
+		Add(OBJ_STUMP, cx + 4.6f, cy - 2.2f, 0.4f, 0.4f, 34.0f, 22.0f, true);
+
+		for (float x = cx - 5.0f; x <= cx + 5.0f; x += 1.0f)
+		{
+			bool gate = (x > cx - 1.5f && x < cx + 1.5f);
+
+			if (!gate)
+				Add(OBJ_FENCE, x, cy + 6.0f, 0.45f, 0.35f, 30.0f, 26.0f, true);
+		}
+	}
+
+	// ── 늪 초입의 오두막 ──
+	// 약초꾼은 어느 편도 아니다. 그래서 아무도 지켜 주지 않는 자리에 산다.
+	{
+		const float cx = MARSH_X, cy = MARSH_Y;
+
+		ClearArea(cx, cy, 7.0f);
+
+		Add(OBJ_HOUSE, cx, cy, 1.5f, 1.5f, 108.0f, 94.0f, true);
+
+		Add(OBJ_STUMP, cx - 3.4f, cy + 2.4f, 0.4f, 0.4f, 34.0f, 22.0f, true);
+		Add(OBJ_ROCK,  cx + 3.6f, cy + 1.8f, 0.4f, 0.35f, 36.0f, 22.0f, true);
+		Add(OBJ_BUSH,  cx - 2.6f, cy - 3.0f, 0.4f, 0.4f, 38.0f, 30.0f, true);
+		Add(OBJ_BUSH,  cx + 2.8f, cy - 2.6f, 0.4f, 0.4f, 36.0f, 28.0f, true);
+	}
 }
 
 void World::PlaceShore()

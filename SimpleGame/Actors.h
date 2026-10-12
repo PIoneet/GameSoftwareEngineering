@@ -2,6 +2,7 @@
 
 #include "Actor.h"
 #include "World.h"
+#include "Story.h"
 
 // 구체 액터들.
 //
@@ -123,10 +124,46 @@ public:
 
 	void SetHome(float hx, float hy);
 
+	// 원형과 시드로 성향·소속·체력을 한 번에 세운다 (STORY.md §2-5-1).
+	void SetupFrom(int archetype, unsigned int seed);
+
+	// 피해를 입힌다. 이 일격으로 죽었으면 true.
+	// 죽으면 여기서 사망의 파급(§14-5)까지 처리한다 — 공포도가 오른다.
+	bool TakeHit(int amount, float fromX, float fromY, const UpdateContext& ctx);
+
+	bool IsDying() const { return m_DeathTimer > 0.0f; }
+
+	int           Archetype() const { return m_Archetype; }
+	int           Faction()   const { return m_Faction; }
+	int           State()     const { return m_State; }
+	int           Hp()        const { return m_Hp; }
+	int           MaxHp()     const { return m_MaxHp; }
+	const Traits& Trait()     const { return m_Traits; }
+
 	bool talked  = false;
 	bool talking = false;   // 대화 중이면 멈춰 서서 플레이어를 본다
 
+	// ── 세계 규칙 (STORY.md §1) ──
+	// 판정에만 쓴다. 렌더링은 항상 주인공 시점이라 그리기에는 관여하지 않는다.
+	bool isTuned   = true;    // R3 축제 노래에 물들었는가
+	bool hasAnchor = false;   // R4 기억의 끈
+	bool isErased  = false;   // R2 세상의 기억에서 지워졌는가
+
+	// 잠입 신도 (§2-6). 드러나기 전까지는 주민과 구별되지 않는다.
+	bool covertCultist = false;
+	bool revealed      = false;
+
+	int tier = TIER_T3;       // §2-5 보호 등급
+
 private:
+	// §14-7 공격 발생 확률. 성인(motive 0)은 항상 0 이 나온다.
+	float AttackChance(const UpdateContext& ctx, bool targetAlone, int guards) const;
+
+	// 주변에서 해칠 만한 상대를 고른다. 매 프레임 돌리면 비싸서 간격을 둔다.
+	void  Retarget(const UpdateContext& ctx);
+
+	bool  Perceives(const NpcActor* other) const;
+
 	const wchar_t* m_Name;
 
 	int   m_DialogueSet;
@@ -137,6 +174,28 @@ private:
 	float m_HomeX   = 0.0f, m_HomeY   = 0.0f;
 	float m_TargetX = 0.0f, m_TargetY = 0.0f;
 	float m_WaitTimer = 0.0f;
+
+	// ── §14 자율 행동 ──
+	int    m_Archetype = AT_VILLAGER;
+	int    m_Faction   = FC_NONE;
+	int    m_State     = AG_CALM;
+	Traits m_Traits    = { 0.5f, 0.5f, 0.2f, 0.5f };
+
+	float m_Sight  = 5.0f;
+	float m_Motive = 0.0f;
+	bool  m_Armed  = false;
+
+	int   m_Hp     = 10;
+	int   m_MaxHp  = 10;
+
+	Actor* m_Threat = 0;      // 소유하지 않는다. Reap 이 지우면 다음 판단에서 떨어진다.
+
+	float m_ThinkTimer  = 0.0f;   // 다음 표적 재탐색까지
+	float m_StateTimer  = 0.0f;   // 현재 상태를 유지한 시간
+	float m_SwingCd     = 0.0f;
+	float m_SwingAnim   = -1.0f;
+	float m_HurtFlash   = 0.0f;
+	float m_DeathTimer  = 0.0f;
 };
 
 
@@ -183,6 +242,10 @@ public:
 	bool TakeDamage(int amount, float fromX, float fromY, const UpdateContext& ctx);
 
 	bool IsDying() const { return m_DeathTimer > 0.0f; }
+
+	int MonsterKind() const { return m_MonsterKind; }
+	int Hp()          const { return m_Hp; }
+	int MaxHp()       const { return m_MaxHp; }
 
 private:
 	void DropLoot(const UpdateContext& ctx);

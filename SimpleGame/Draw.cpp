@@ -576,18 +576,144 @@ void Draw::Pickup(Renderer& r, const ModelLibrary& lib, float sx, float sy,
 	Model(r, lib, id, inst);
 }
 
-void Draw::AttackArc(Renderer& r, float sx, float sy, int facing, float progress)
+
+// ─────────────────────────────────────────────────────────────────────────
+//  플레이어의 검
+// ─────────────────────────────────────────────────────────────────────────
+
+namespace
 {
-	// 앞쪽으로 훑고 지나가는 반달. progress 는 0 에서 1.
-	float reach = 26.0f + progress * 28.0f;
-	float fade  = (1.0f - progress);
+	const float SWORD_TO_RAD = 0.017453292f;
 
-	float cx = sx + (float)facing * reach * 0.55f;
-	float cy = sy - 22.0f;
+	// 칼 각도(도). 0 이 위, 양수가 바라보는 쪽.
+	const float SWORD_REST  = 118.0f;   // 앞으로 낮게 겨눈 준비 자세
+	const float SWORD_RAISE = -42.0f;   // 머리 뒤로 치켜든 자세
+	const float SWORD_END   = 138.0f;   // 베고 내려온 자세
 
-	r.DrawEllipse(cx, cy, reach * 1.5f, reach * 0.85f,
-	              0.95f, 0.88f, 0.62f, 0.16f * fade);
+	// 휘두름을 셋으로 나눈다. 베는 구간만 짧고, 그 구간에서만 크게 움직인다.
+	const float SWING_RAISE_END = 0.22f;
+	const float SWING_CUT_END   = 0.55f;
 
-	r.DrawEllipse(cx, cy, reach * 1.0f, reach * 0.55f,
-	              1.00f, 0.94f, 0.74f, 0.22f * fade);
+	float EaseOut(float t) { return 1.0f - (1.0f - t) * (1.0f - t); }
+
+	float EaseInOut(float t)
+	{
+		return (t < 0.5f) ? 2.0f * t * t
+		                  : 1.0f - 2.0f * (1.0f - t) * (1.0f - t);
+	}
+
+	// 휘두름 진행도를 칼 각도로 바꾼다.
+	//
+	// 등속으로 돌리면 칼이 "도는" 것으로만 보이고 "베는" 것으로 보이지 않는다.
+	// 치켜올릴 때 한 번, 벨 때 한 번 가속을 넣어야 힘이 실린 것처럼 읽힌다.
+	float SwingAngle(float p)
+	{
+		if (p < 0.0f)
+			return SWORD_REST;
+
+		if (p < SWING_RAISE_END)
+		{
+			float t = p / SWING_RAISE_END;
+
+			return SWORD_REST + (SWORD_RAISE - SWORD_REST) * EaseOut(t);
+		}
+
+		if (p < SWING_CUT_END)
+		{
+			float t = (p - SWING_RAISE_END) / (SWING_CUT_END - SWING_RAISE_END);
+
+			return SWORD_RAISE + (SWORD_END - SWORD_RAISE) * EaseInOut(t);
+		}
+
+		float t = (p - SWING_CUT_END) / (1.0f - SWING_CUT_END);
+
+		return SWORD_END + (SWORD_REST - SWORD_END) * EaseOut(t);
+	}
+}
+
+void Draw::Sword(Renderer& r, float sx, float sy, float scale, int facing,
+                 float progress, float lit)
+{
+	const float s = scale;
+
+	float rad = SwingAngle(progress) * SWORD_TO_RAD * (float)facing;
+
+	// 칼끝이 향하는 방향. 각도가 0 이면 (0, -1) — 화면 위쪽이다.
+	float dx =  sinf(rad);
+	float dy = -cosf(rad);
+
+	// 쥔 손 — 가슴 높이의 앞쪽 손
+	float hx = sx + (float)facing * 8.5f * s;
+	float hy = sy - 20.5f * s;
+
+	const float blade = 26.0f * s;
+	const float thick =  3.0f * s;
+
+	// ── 베고 지나간 자리 ──
+	// 칼끝이 훑은 호를 구슬로 이어 남긴다. 최근에 지나간 쪽일수록 진하다.
+	if (progress >= SWING_RAISE_END && progress < 0.72f)
+	{
+		float fade = 1.0f - (progress - SWING_RAISE_END) / (0.72f - SWING_RAISE_END);
+
+		for (int i = 0; i < 9; ++i)
+		{
+			float k = (float)i / 8.0f;
+			float t = SWING_RAISE_END + (progress - SWING_RAISE_END) * k;
+			float a = SwingAngle(t) * SWORD_TO_RAD * (float)facing;
+
+			r.DrawEllipse(hx + sinf(a) * blade * 0.96f,
+			              hy - cosf(a) * blade * 0.96f,
+			              6.0f * s, 6.0f * s,
+			              1.00f, 0.95f, 0.78f, 0.26f * k * fade);
+		}
+	}
+
+	// ── 잔상 ──
+	// 칼날 한 장만으로는 아무리 빨리 돌려도 "휙" 하는 느낌이 나지 않는다.
+	// 방금 지나온 각도에 흐릿한 칼날을 겹쳐 둔다.
+	if (progress >= 0.18f && progress < 0.66f)
+	{
+		for (int i = 1; i <= 4; ++i)
+		{
+			float back = progress - (float)i * 0.042f;
+
+			if (back < 0.16f)
+				break;
+
+			float a = SwingAngle(back) * SWORD_TO_RAD * (float)facing;
+
+			r.DrawQuadRot(hx + sinf(a) * blade * 0.5f,
+			              hy - cosf(a) * blade * 0.5f,
+			              thick * 0.85f, blade, a,
+			              0.90f, 0.94f, 1.00f, 0.26f - (float)i * 0.05f);
+		}
+	}
+
+	// ── 칼 ──
+	// 자루 → 자루 끝 → 코등이 → 날 → 날의 빛 → 칼끝 순으로 겹친다.
+	const float grip = 7.5f * s;
+
+	r.DrawQuadRot(hx - dx * grip * 0.5f, hy - dy * grip * 0.5f,
+	              2.9f * s, grip, rad,
+	              0.20f * lit, 0.14f * lit, 0.10f * lit);
+
+	r.DrawEllipse(hx - dx * grip, hy - dy * grip, 4.6f * s, 4.6f * s,
+	              0.48f * lit, 0.39f * lit, 0.20f * lit);
+
+	// 코등이는 날과 직각이다 — 같은 사각형을 90도 더 돌리면 된다.
+	r.DrawQuadRot(hx, hy, 2.7f * s, 13.0f * s, rad + 1.5707963f,
+	              0.54f * lit, 0.44f * lit, 0.22f * lit);
+
+	r.DrawQuadRot(hx + dx * blade * 0.5f, hy + dy * blade * 0.5f,
+	              thick, blade, rad,
+	              0.58f * lit + 0.16f, 0.62f * lit + 0.18f, 0.70f * lit + 0.22f);
+
+	// 날 가운데를 좁게 밝혀 금속 티를 낸다.
+	r.DrawQuadRot(hx + dx * blade * 0.54f, hy + dy * blade * 0.54f,
+	              thick * 0.34f, blade * 0.84f, rad,
+	              0.94f, 0.97f, 1.00f, 0.88f);
+
+	r.DrawQuadRot(hx + dx * (blade + 2.0f * s), hy + dy * (blade + 2.0f * s),
+	              thick * 0.52f, 5.0f * s, rad,
+	              0.80f * lit + 0.16f, 0.84f * lit + 0.16f, 0.90f * lit + 0.18f);
 }

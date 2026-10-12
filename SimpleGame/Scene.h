@@ -53,6 +53,9 @@ public:
 	Actor* FindNearest(float wx, float wy, float radius, int kind) const;
 
 	int ActorCount()      const { return (int)m_All.size(); }
+
+	// 모니터링용 전수 조회. 소유는 Scene 이 계속 들고 있다 — 읽기만 할 것.
+	const std::vector<Actor*>& All() const { return m_All; }
 	int DrawnLastFrame()  const { return m_DrawnLastFrame; }
 
 private:

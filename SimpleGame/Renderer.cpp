@@ -57,6 +57,7 @@ void Renderer::Initialize(int windowSizeX, int windowSizeY)
 		m_SpriteUniRect   = glGetUniformLocation(m_SpriteProg, "u_Rect");
 		m_SpriteUniColor  = glGetUniformLocation(m_SpriteProg, "u_Color");
 		m_SpriteUniRes    = glGetUniformLocation(m_SpriteProg, "u_Resolution");
+		m_SpriteUniRot    = glGetUniformLocation(m_SpriteProg, "u_Rot");
 
 		m_TexAttribPos = glGetAttribLocation(m_TexProg, "a_Position");
 		m_TexUniRect   = glGetUniformLocation(m_TexProg, "u_Rect");
@@ -501,7 +502,8 @@ void Renderer::PostProcess(float dread, float time)
 // ─────────────────────────────────────────────────────────────────────────
 
 void Renderer::DrawUnitShape(GLuint vbo, int vertexCount, float x, float y, float w, float h,
-                             float r, float g, float b, float a)
+                             float r, float g, float b, float a,
+                             float rotCos, float rotSin)
 {
 	if (!m_Initialized)
 		return;
@@ -511,6 +513,10 @@ void Renderer::DrawUnitShape(GLuint vbo, int vertexCount, float x, float y, floa
 	glUniform4f(m_SpriteUniRect, x, y, w, h);
 	glUniform4f(m_SpriteUniColor, r, g, b, a);
 	glUniform2f(m_SpriteUniRes, m_WindowSizeX, m_WindowSizeY);
+
+	// 유니폼의 기본값은 0 이다. 여기서 빠뜨리면 회전이 (0,0) 이 되어
+	// 모든 도형이 한 점으로 무너진다.
+	glUniform2f(m_SpriteUniRot, rotCos, rotSin);
 
 	glEnableVertexAttribArray(m_SpriteAttribPos);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -525,6 +531,13 @@ void Renderer::DrawQuad(float x, float y, float w, float h,
                         float r, float g, float b, float a)
 {
 	DrawUnitShape(m_VBOQuad, 6, x, y, w, h, r, g, b, a);
+}
+
+void Renderer::DrawQuadRot(float cx, float cy, float w, float h, float angle,
+                           float r, float g, float b, float a)
+{
+	DrawUnitShape(m_VBOQuad, 6, cx - w * 0.5f, cy - h * 0.5f, w, h, r, g, b, a,
+	              cosf(angle), sinf(angle));
 }
 
 void Renderer::DrawDiamond(float cx, float cy, float w, float h,

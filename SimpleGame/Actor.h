@@ -31,6 +31,8 @@ struct RenderContext
 // 액터를 갱신할 때 필요한 주변 정보.
 //
 // 액터가 게임 전역 상태를 직접 붙들지 않도록, 필요한 것만 여기에 실어 넘긴다.
+struct HiddenState;
+
 struct UpdateContext
 {
 	const World* world;
@@ -39,11 +41,16 @@ struct UpdateContext
 	PlayerStats* stats;      // 소유는 Game. 액터는 읽고 쓰기만 한다.
 	PlayerActor* player;
 
+	// 숨은 월드 상태 (STORY.md §13). AI 가 읽고, 사망 파급이 쓴다.
+	// UI 로는 절대 새 나가지 않는다.
+	HiddenState* hidden;
+
 	float time;
 	float playerX;           // 대부분의 AI 가 이것만 본다
 	float playerY;
 
 	bool  paused;            // 대화창이 떠 있으면 true
+	bool  night;             // 야간 보정 (§14-7). 밤낮 주기가 생기면 여기로 들어온다
 };
 
 enum ActorKind
