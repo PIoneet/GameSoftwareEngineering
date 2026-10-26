@@ -1,0 +1,828 @@
+{
+	"_comment": "gen_nature.py 가 생성. 손으로 고치지 말 것 — 다시 돌리면 덮어쓴다.",
+	"tile_size_m": 1.0,
+	"flora": {
+		"gltf": "export/nature/flora.gltf",
+		"items": [
+			{
+				"name": "nat_tree_oak",
+				"tris": 212
+			},
+			{
+				"name": "nat_tree_pine",
+				"tris": 100
+			},
+			{
+				"name": "nat_tree_birch",
+				"tris": 252
+			},
+			{
+				"name": "nat_tree_dead",
+				"tris": 136
+			},
+			{
+				"name": "nat_tree_stump",
+				"tris": 67
+			},
+			{
+				"name": "nat_tree_sapling",
+				"tris": 92
+			},
+			{
+				"name": "nat_tree_log_fallen",
+				"tris": 41
+			},
+			{
+				"name": "nat_rock_boulder",
+				"tris": 46
+			},
+			{
+				"name": "nat_rock_cluster",
+				"tris": 80
+			},
+			{
+				"name": "nat_rock_ruin_block",
+				"tris": 29
+			},
+			{
+				"name": "nat_grass_tuft",
+				"tris": 108
+			},
+			{
+				"name": "nat_grass_reed",
+				"tris": 120
+			},
+			{
+				"name": "nat_plant_fern",
+				"tris": 288
+			},
+			{
+				"name": "nat_bush_round",
+				"tris": 92
+			},
+			{
+				"name": "nat_bush_thorn",
+				"tris": 208
+			},
+			{
+				"name": "nat_mushroom_cluster",
+				"tris": 144
+			},
+			{
+				"name": "nat_mushroom_glow",
+				"tris": 108
+			},
+			{
+				"name": "nat_flower_patch",
+				"tris": 119
+			}
+		]
+	},
+	"ground": {
+		"gltf": "export/nature/terrain.gltf",
+		"items": [
+			{
+				"name": "nat_ground_grass",
+				"tile_enum": "TILE_GRASS",
+				"material": "fix.grass",
+				"base_color": [
+					0.24,
+					0.31,
+					0.18
+				],
+				"tris": 32
+			},
+			{
+				"name": "nat_ground_meadow",
+				"tile_enum": "TILE_MEADOW",
+				"material": "fix.grass_light",
+				"base_color": [
+					0.29,
+					0.37,
+					0.22
+				],
+				"tris": 32
+			},
+			{
+				"name": "nat_ground_path",
+				"tile_enum": "TILE_PATH",
+				"material": "fix.earth",
+				"base_color": [
+					0.33,
+					0.28,
+					0.21
+				],
+				"tris": 32
+			},
+			{
+				"name": "nat_ground_sand",
+				"tile_enum": "TILE_SAND",
+				"material": "fix.sand",
+				"base_color": [
+					0.46,
+					0.41,
+					0.31
+				],
+				"tris": 32
+			},
+			{
+				"name": "nat_ground_shallow",
+				"tile_enum": "TILE_SHALLOW",
+				"material": "fix.water_shallow",
+				"base_color": [
+					0.17,
+					0.36,
+					0.37
+				],
+				"tris": 32
+			},
+			{
+				"name": "nat_ground_water",
+				"tile_enum": "TILE_WATER",
+				"material": "fix.water_deep",
+				"base_color": [
+					0.08,
+					0.21,
+					0.25
+				],
+				"tris": 32
+			},
+			{
+				"name": "nat_ground_floor",
+				"tile_enum": "TILE_FLOOR",
+				"material": "fix.stone_ruin",
+				"base_color": [
+					0.25,
+					0.24,
+					0.26
+				],
+				"tris": 32
+			},
+			{
+				"name": "nat_ground_wall",
+				"tile_enum": "TILE_WALL",
+				"material": "fix.stone_dark",
+				"base_color": [
+					0.15,
+					0.15,
+					0.17
+				],
+				"tris": 32
+			},
+			{
+				"name": "nat_ground_stairs",
+				"tile_enum": null,
+				"material": "fix.stone_ruin",
+				"tris": 72
+			},
+			{
+				"name": "nat_ground_slope",
+				"tile_enum": null,
+				"material": "fix.stone_ruin",
+				"tris": 2
+			}
+		]
+	},
+	"_ground_note": "tile_enum 은 SimpleGame/World.h 의 TILE_* 와 일대일로 맞춰 두었다.",
+	"materials": {
+		"emit.eldritch": {
+			"srgb": [
+				0.24,
+				0.92,
+				0.84
+			],
+			"metallic": 0.0,
+			"roughness": 0.35,
+			"emissive": 2.2,
+			"swappable": false
+		},
+		"emit.ember": {
+			"srgb": [
+				0.66,
+				0.33,
+				0.12
+			],
+			"metallic": 0.0,
+			"roughness": 0.6,
+			"emissive": 1.6,
+			"swappable": false
+		},
+		"emit.eye_glow": {
+			"srgb": [
+				0.86,
+				0.74,
+				0.32
+			],
+			"metallic": 0.0,
+			"roughness": 0.25,
+			"emissive": 1.1,
+			"swappable": false
+		},
+		"emit.lantern": {
+			"srgb": [
+				0.98,
+				0.72,
+				0.36
+			],
+			"metallic": 0.0,
+			"roughness": 0.3,
+			"emissive": 3.0,
+			"swappable": false
+		},
+		"fix.bark": {
+			"srgb": [
+				0.26,
+				0.21,
+				0.16
+			],
+			"metallic": 0.0,
+			"roughness": 0.9,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.bark_pale": {
+			"srgb": [
+				0.42,
+				0.39,
+				0.33
+			],
+			"metallic": 0.0,
+			"roughness": 0.88,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.claw": {
+			"srgb": [
+				0.16,
+				0.15,
+				0.14
+			],
+			"metallic": 0.0,
+			"roughness": 0.4,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.clay_tile": {
+			"srgb": [
+				0.44,
+				0.27,
+				0.2
+			],
+			"metallic": 0.0,
+			"roughness": 0.82,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.cloth_linen": {
+			"srgb": [
+				0.62,
+				0.57,
+				0.46
+			],
+			"metallic": 0.0,
+			"roughness": 0.9,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.cloth_wool": {
+			"srgb": [
+				0.42,
+				0.4,
+				0.36
+			],
+			"metallic": 0.0,
+			"roughness": 0.92,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.earth": {
+			"srgb": [
+				0.33,
+				0.28,
+				0.21
+			],
+			"metallic": 0.0,
+			"roughness": 0.95,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.eye_white": {
+			"srgb": [
+				0.74,
+				0.72,
+				0.68
+			],
+			"metallic": 0.0,
+			"roughness": 0.25,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.grass": {
+			"srgb": [
+				0.24,
+				0.31,
+				0.18
+			],
+			"metallic": 0.0,
+			"roughness": 0.92,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.grass_light": {
+			"srgb": [
+				0.34,
+				0.41,
+				0.22
+			],
+			"metallic": 0.0,
+			"roughness": 0.92,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.hoof": {
+			"srgb": [
+				0.21,
+				0.19,
+				0.17
+			],
+			"metallic": 0.0,
+			"roughness": 0.45,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.horn": {
+			"srgb": [
+				0.58,
+				0.53,
+				0.42
+			],
+			"metallic": 0.0,
+			"roughness": 0.55,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.leaf_autumn": {
+			"srgb": [
+				0.48,
+				0.32,
+				0.14
+			],
+			"metallic": 0.0,
+			"roughness": 0.88,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.leaf_dead": {
+			"srgb": [
+				0.33,
+				0.27,
+				0.18
+			],
+			"metallic": 0.0,
+			"roughness": 0.9,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.leaf_pine": {
+			"srgb": [
+				0.16,
+				0.26,
+				0.19
+			],
+			"metallic": 0.0,
+			"roughness": 0.88,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.leaf_summer": {
+			"srgb": [
+				0.22,
+				0.32,
+				0.17
+			],
+			"metallic": 0.0,
+			"roughness": 0.88,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.leather": {
+			"srgb": [
+				0.35,
+				0.25,
+				0.17
+			],
+			"metallic": 0.0,
+			"roughness": 0.7,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.leather_dark": {
+			"srgb": [
+				0.22,
+				0.16,
+				0.12
+			],
+			"metallic": 0.0,
+			"roughness": 0.68,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.metal_bronze": {
+			"srgb": [
+				0.52,
+				0.38,
+				0.19
+			],
+			"metallic": 1.0,
+			"roughness": 0.36,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.metal_iron": {
+			"srgb": [
+				0.36,
+				0.37,
+				0.39
+			],
+			"metallic": 1.0,
+			"roughness": 0.42,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.metal_pewter": {
+			"srgb": [
+				0.48,
+				0.48,
+				0.47
+			],
+			"metallic": 1.0,
+			"roughness": 0.48,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.metal_rust": {
+			"srgb": [
+				0.42,
+				0.26,
+				0.16
+			],
+			"metallic": 0.6,
+			"roughness": 0.78,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.moss": {
+			"srgb": [
+				0.25,
+				0.32,
+				0.2
+			],
+			"metallic": 0.0,
+			"roughness": 0.92,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.mud": {
+			"srgb": [
+				0.24,
+				0.2,
+				0.16
+			],
+			"metallic": 0.0,
+			"roughness": 0.88,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.mushroom_cap": {
+			"srgb": [
+				0.46,
+				0.26,
+				0.22
+			],
+			"metallic": 0.0,
+			"roughness": 0.7,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.mushroom_pale": {
+			"srgb": [
+				0.63,
+				0.59,
+				0.49
+			],
+			"metallic": 0.0,
+			"roughness": 0.7,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.nose": {
+			"srgb": [
+				0.14,
+				0.12,
+				0.12
+			],
+			"metallic": 0.0,
+			"roughness": 0.3,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.sand": {
+			"srgb": [
+				0.46,
+				0.41,
+				0.31
+			],
+			"metallic": 0.0,
+			"roughness": 0.92,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.stone_dark": {
+			"srgb": [
+				0.15,
+				0.15,
+				0.17
+			],
+			"metallic": 0.0,
+			"roughness": 0.9,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.stone_granite": {
+			"srgb": [
+				0.34,
+				0.34,
+				0.35
+			],
+			"metallic": 0.0,
+			"roughness": 0.86,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.stone_mossy": {
+			"srgb": [
+				0.28,
+				0.33,
+				0.25
+			],
+			"metallic": 0.0,
+			"roughness": 0.9,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.stone_ruin": {
+			"srgb": [
+				0.25,
+				0.24,
+				0.26
+			],
+			"metallic": 0.0,
+			"roughness": 0.88,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.stone_sandy": {
+			"srgb": [
+				0.44,
+				0.4,
+				0.32
+			],
+			"metallic": 0.0,
+			"roughness": 0.88,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.thatch": {
+			"srgb": [
+				0.5,
+				0.42,
+				0.25
+			],
+			"metallic": 0.0,
+			"roughness": 0.94,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.thatch_old": {
+			"srgb": [
+				0.36,
+				0.31,
+				0.21
+			],
+			"metallic": 0.0,
+			"roughness": 0.94,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.tongue": {
+			"srgb": [
+				0.52,
+				0.3,
+				0.31
+			],
+			"metallic": 0.0,
+			"roughness": 0.4,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.tooth": {
+			"srgb": [
+				0.8,
+				0.77,
+				0.7
+			],
+			"metallic": 0.0,
+			"roughness": 0.35,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.water_deep": {
+			"srgb": [
+				0.08,
+				0.21,
+				0.25
+			],
+			"metallic": 0.0,
+			"roughness": 0.14,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.water_shallow": {
+			"srgb": [
+				0.17,
+				0.36,
+				0.37
+			],
+			"metallic": 0.0,
+			"roughness": 0.18,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.wood_charred": {
+			"srgb": [
+				0.11,
+				0.1,
+				0.1
+			],
+			"metallic": 0.0,
+			"roughness": 0.94,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.wood_dark": {
+			"srgb": [
+				0.22,
+				0.17,
+				0.13
+			],
+			"metallic": 0.0,
+			"roughness": 0.78,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.wood_oak": {
+			"srgb": [
+				0.38,
+				0.29,
+				0.2
+			],
+			"metallic": 0.0,
+			"roughness": 0.8,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.wood_pine": {
+			"srgb": [
+				0.47,
+				0.38,
+				0.26
+			],
+			"metallic": 0.0,
+			"roughness": 0.8,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"fix.wood_weathered": {
+			"srgb": [
+				0.33,
+				0.31,
+				0.28
+			],
+			"metallic": 0.0,
+			"roughness": 0.88,
+			"emissive": 0.0,
+			"swappable": false
+		},
+		"slot.cloth_main": {
+			"srgb": [
+				0.63,
+				0.31,
+				0.23
+			],
+			"metallic": 0.0,
+			"roughness": 0.9,
+			"emissive": 0.0,
+			"swappable": true
+		},
+		"slot.cloth_trim": {
+			"srgb": [
+				0.62,
+				0.57,
+				0.46
+			],
+			"metallic": 0.0,
+			"roughness": 0.88,
+			"emissive": 0.0,
+			"swappable": true
+		},
+		"slot.eye": {
+			"srgb": [
+				0.26,
+				0.22,
+				0.18
+			],
+			"metallic": 0.0,
+			"roughness": 0.25,
+			"emissive": 0.0,
+			"swappable": true
+		},
+		"slot.fur_belly": {
+			"srgb": [
+				0.55,
+				0.52,
+				0.47
+			],
+			"metallic": 0.0,
+			"roughness": 0.88,
+			"emissive": 0.0,
+			"swappable": true
+		},
+		"slot.fur_main": {
+			"srgb": [
+				0.37,
+				0.35,
+				0.33
+			],
+			"metallic": 0.0,
+			"roughness": 0.88,
+			"emissive": 0.0,
+			"swappable": true
+		},
+		"slot.hair": {
+			"srgb": [
+				0.2,
+				0.16,
+				0.13
+			],
+			"metallic": 0.0,
+			"roughness": 0.85,
+			"emissive": 0.0,
+			"swappable": true
+		},
+		"slot.horn": {
+			"srgb": [
+				0.58,
+				0.53,
+				0.42
+			],
+			"metallic": 0.0,
+			"roughness": 0.55,
+			"emissive": 0.0,
+			"swappable": true
+		},
+		"slot.leather": {
+			"srgb": [
+				0.35,
+				0.25,
+				0.17
+			],
+			"metallic": 0.0,
+			"roughness": 0.7,
+			"emissive": 0.0,
+			"swappable": true
+		},
+		"slot.metal": {
+			"srgb": [
+				0.36,
+				0.37,
+				0.39
+			],
+			"metallic": 1.0,
+			"roughness": 0.42,
+			"emissive": 0.0,
+			"swappable": true
+		},
+		"slot.skin": {
+			"srgb": [
+				0.76,
+				0.62,
+				0.49
+			],
+			"metallic": 0.0,
+			"roughness": 0.72,
+			"emissive": 0.0,
+			"swappable": true
+		}
+	},
+	"_materials_note": "srgb 는 눈에 보이는 값. glTF 의 baseColorFactor 는 선형이라 palette.lin() 으로 변환된 뒤 들어간다."
+}

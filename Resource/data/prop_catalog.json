@@ -1,0 +1,419 @@
+{
+	"_comment": "gen_props.py 가 생성. 손으로 고치지 말 것 — 다시 돌리면 덮어쓴다.",
+	"grid": {
+		"module_m": 2.0,
+		"wall_height_m": 2.4,
+		"wall_thickness_m": 0.2,
+		"roof_pitch_deg": 40.0
+	},
+	"_note": "모든 메쉬의 원점은 바닥 접지면 중앙. blueprint 의 at 은 미터 단위.",
+	"groups": {
+		"structure": {
+			"gltf": "export/props/structure.gltf",
+			"items": [
+				{
+					"name": "prop_house_wall_straight",
+					"tris": 96
+				},
+				{
+					"name": "prop_house_wall_window",
+					"tris": 144
+				},
+				{
+					"name": "prop_house_wall_door",
+					"tris": 204
+				},
+				{
+					"name": "prop_house_corner",
+					"tris": 36
+				},
+				{
+					"name": "prop_house_roof_slope",
+					"tris": 48
+				},
+				{
+					"name": "prop_house_roof_ridge",
+					"tris": 8
+				},
+				{
+					"name": "prop_house_roof_gable",
+					"tris": 20
+				},
+				{
+					"name": "prop_house_floor",
+					"tris": 72
+				},
+				{
+					"name": "prop_house_pillar",
+					"tris": 36
+				},
+				{
+					"name": "prop_house_beam",
+					"tris": 12
+				},
+				{
+					"name": "prop_house_stair",
+					"tris": 96
+				},
+				{
+					"name": "prop_fence_straight",
+					"tris": 48
+				},
+				{
+					"name": "prop_fence_gate",
+					"tris": 108
+				},
+				{
+					"name": "prop_house_well",
+					"tris": 200
+				}
+			]
+		},
+		"furniture": {
+			"gltf": "export/props/furniture.gltf",
+			"items": [
+				{
+					"name": "prop_furn_table",
+					"tris": 72
+				},
+				{
+					"name": "prop_furn_bench",
+					"tris": 60
+				},
+				{
+					"name": "prop_furn_stool",
+					"tris": 48
+				},
+				{
+					"name": "prop_furn_bed",
+					"tris": 108
+				},
+				{
+					"name": "prop_furn_chest",
+					"tris": 56
+				},
+				{
+					"name": "prop_furn_shelf",
+					"tris": 72
+				},
+				{
+					"name": "prop_furn_barrel",
+					"tris": 144
+				},
+				{
+					"name": "prop_furn_crate",
+					"tris": 36
+				},
+				{
+					"name": "prop_furn_cupboard",
+					"tris": 72
+				}
+			]
+		},
+		"tools": {
+			"gltf": "export/props/tools.gltf",
+			"items": [
+				{
+					"name": "prop_tool_bucket",
+					"tris": 108
+				},
+				{
+					"name": "prop_tool_lantern",
+					"tris": 96
+				},
+				{
+					"name": "prop_tool_cauldron",
+					"tris": 68
+				},
+				{
+					"name": "prop_tool_anvil",
+					"tris": 48
+				},
+				{
+					"name": "prop_tool_basket",
+					"tris": 120
+				},
+				{
+					"name": "prop_tool_sack",
+					"tris": 36
+				},
+				{
+					"name": "prop_tool_rope_coil",
+					"tris": 96
+				},
+				{
+					"name": "prop_tool_ladder",
+					"tris": 136
+				},
+				{
+					"name": "prop_tool_cart_wheel",
+					"tris": 212
+				},
+				{
+					"name": "prop_tool_sign_board",
+					"tris": 60
+				},
+				{
+					"name": "prop_tool_broom",
+					"tris": 40
+				}
+			]
+		}
+	},
+	"blueprints": [
+		{
+			"id": "cottage_small",
+			"label": "작은 오두막 (2x2 칸)",
+			"footprint": [
+				2,
+				2
+			],
+			"pieces": [
+				{
+					"mesh": "prop_house_floor",
+					"at": [
+						0,
+						0,
+						0
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_house_floor",
+					"at": [
+						2,
+						0,
+						0
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_house_wall_door",
+					"at": [
+						0,
+						-1,
+						0
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_house_wall_straight",
+					"at": [
+						2,
+						-1,
+						0
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_house_wall_window",
+					"at": [
+						0,
+						1,
+						0
+					],
+					"yaw": 180
+				},
+				{
+					"mesh": "prop_house_wall_straight",
+					"at": [
+						2,
+						1,
+						0
+					],
+					"yaw": 180
+				},
+				{
+					"mesh": "prop_house_corner",
+					"at": [
+						-1,
+						-1,
+						0
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_house_corner",
+					"at": [
+						3,
+						-1,
+						0
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_house_corner",
+					"at": [
+						-1,
+						1,
+						0
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_house_corner",
+					"at": [
+						3,
+						1,
+						0
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_house_roof_slope",
+					"at": [
+						0,
+						0,
+						2.4
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_house_roof_slope",
+					"at": [
+						2,
+						0,
+						2.4
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_house_roof_slope",
+					"at": [
+						0,
+						0,
+						2.4
+					],
+					"yaw": 180
+				},
+				{
+					"mesh": "prop_house_roof_slope",
+					"at": [
+						2,
+						0,
+						2.4
+					],
+					"yaw": 180
+				},
+				{
+					"mesh": "prop_house_roof_ridge",
+					"at": [
+						0,
+						0,
+						3.24
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_house_roof_ridge",
+					"at": [
+						2,
+						0,
+						3.24
+					],
+					"yaw": 0
+				}
+			]
+		},
+		{
+			"id": "inn_interior",
+			"label": "여관 1층 배치",
+			"footprint": [
+				4,
+				4
+			],
+			"pieces": [
+				{
+					"mesh": "prop_furn_table",
+					"at": [
+						1.2,
+						0.8,
+						0
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_furn_bench",
+					"at": [
+						1.2,
+						0.2,
+						0
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_furn_bench",
+					"at": [
+						1.2,
+						1.4,
+						0
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_furn_table",
+					"at": [
+						3.6,
+						0.8,
+						0
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_furn_stool",
+					"at": [
+						3.0,
+						0.8,
+						0
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_furn_barrel",
+					"at": [
+						0.4,
+						3.2,
+						0
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_furn_barrel",
+					"at": [
+						1.0,
+						3.3,
+						0
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_furn_shelf",
+					"at": [
+						2.4,
+						3.7,
+						0
+					],
+					"yaw": 180
+				},
+				{
+					"mesh": "prop_tool_cauldron",
+					"at": [
+						3.8,
+						3.4,
+						0
+					],
+					"yaw": 0
+				},
+				{
+					"mesh": "prop_tool_lantern",
+					"at": [
+						1.2,
+						0.8,
+						0.78
+					],
+					"yaw": 0
+				}
+			]
+		}
+	]
+}
