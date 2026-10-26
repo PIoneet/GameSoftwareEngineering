@@ -61,6 +61,12 @@ class _Vec:
 
 	__rmul__ = __mul__
 
+	def __truediv__(self, k):
+		return _Vec((self.x / k, self.y / k, self.z / k))
+
+	def __neg__(self):
+		return _Vec((-self.x, -self.y, -self.z))
+
 	@property
 	def length(self):
 		return math.sqrt(self.x ** 2 + self.y ** 2 + self.z ** 2)

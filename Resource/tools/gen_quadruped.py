@@ -99,6 +99,58 @@ LIMB_R = {
 }
 
 
+# 목 — (가슴쪽 폭, 가슴쪽 높이, 머리쪽 폭, 머리쪽 높이). 전부 전체 치수다.
+#
+# 가슴 쪽을 두껍게 잡아 몸통에서 자연스럽게 이어 나오게 한다. 얇게 시작하면
+# 몸통과 목 사이에 단이 생겨 "머리를 꽂아 놓은" 것처럼 보인다.
+NECK = {
+	'feline': (0.196, 0.182, 0.132, 0.128),
+	'canine': (0.192, 0.198, 0.126, 0.130),
+	'cervid': (0.182, 0.192, 0.118, 0.128),
+}
+
+
+def _segment(mb, a, b, w0, h0, w1, h1, mat, bone, grow=0.014, color=None):
+	"""두 점을 잇는 **각진** 마디.
+
+	limb() 의 원통을 쓰지 않는 이유가 둘 있다.
+
+	  1. 이 짐승들은 파츠가 전부 상자다. 목만 매끈한 원통이면 혼자 붕 뜬다.
+	     (sides>5 면 limb 이 스무스 셰이딩까지 켜서 차이가 더 벌어진다)
+	  2. limb 은 마디마다 뚜껑 면을 만든다. 마디를 이어 붙이면 그 뚜껑이
+	     이음새마다 고리처럼 드러난다.
+
+	블록을 진행 방향으로 조금씩 늘려 **서로 겹쳐** 쌓으면 둘 다 사라진다.
+	"""
+	a = Vector(a)
+	b = Vector(b)
+	d = b - a
+	length = d.length
+
+	if length < 1e-6:
+		return mb
+
+	unit = d / length
+	a2 = a - unit * grow
+	b2 = b + unit * grow
+	c = (a2 + b2) * 0.5
+
+	# 블록의 로컬 +Z 를 진행 방향에 맞춘다. 목도 머리도 x=0 평면 안에 있으므로
+	# X 축 회전 하나로 충분하다.
+	rx = math.atan2(-d.y, d.z)
+
+	mb.block((c.x, c.y, c.z), (w0, h0, (b2 - a2).length), mat,
+	         taper=(w1 / w0), taper_y=(h1 / h0),
+	         rot=(rx, 0.0, 0.0), bone=bone, color=color)
+
+	return mb
+
+
+def _up_of(fwd):
+	"""fwd 에 수직인 '위' 방향. fwd 가 YZ 평면 안에 있을 때만 쓴다."""
+	return Vector((0.0, fwd.z, -fwd.y))
+
+
 def body(mb, family):
 	"""몸통 + 목. 다리·머리·꼬리는 따로 만든다 (파츠 교체를 위해)."""
 	t = TORSO[family]
@@ -130,17 +182,37 @@ def body(mb, family):
 	         (2 * t['spine_02'][0] * bulk * 0.82, abs(chest.y - hips.y) * 0.86, 0.040),
 	         'slot.fur_belly', bone='spine_02')
 
-	# 목
-	neck_bulk = rig.BULK[family]['neck']
+	# 목 — 가슴에서 머리까지 한 줄로, 치수를 연속으로 줄여 간다.
+	# 마디마다 따로 굵기를 적으면 이음매에서 단이 생긴다.
+	nb = rig.BULK[family]['neck']
+	nw0, nh0, nw1, nh1 = NECK[family]
 
-	for a_name, b_name, bone, r0, r1 in (
-		('chest',   'neck_01', 'chest',   0.098, 0.088),
-		('neck_01', 'neck_02', 'neck_01', 0.088, 0.078),
-		('neck_02', 'head',    'neck_02', 0.078, 0.070),
-	):
-		mb.limb(P(family, a_name), P(family, b_name),
-		        r0 * neck_bulk, r1 * neck_bulk,
-		        'slot.fur_main', bone=bone, sides=6)
+	stations = ('chest', 'neck_01', 'neck_02', 'head')
+	steps = len(stations) - 1
+
+	for i in range(steps):
+		t0 = i / steps
+		t1 = (i + 1) / steps
+
+		_segment(mb,
+		         P(family, stations[i]), P(family, stations[i + 1]),
+		         (nw0 + (nw1 - nw0) * t0) * nb, (nh0 + (nh1 - nh0) * t0) * nb,
+		         (nw0 + (nw1 - nw0) * t1) * nb, (nh0 + (nh1 - nh0) * t1) * nb,
+		         'slot.fur_main', bone=stations[i])
+
+	# 목 아래 — 밝은 털. 목이 통짜로 보이지 않게 아래위를 나눈다
+	nc = P(family, 'neck_01')
+	nh = P(family, 'neck_02')
+	mid = (nc + nh) * 0.5
+	fwd_n = (nh - nc).normalized()
+	down = -_up_of(fwd_n)
+
+	throat = mid + down * (nh0 * nb * 0.40)
+
+	_segment(mb, nc + down * (nh0 * nb * 0.34) + fwd_n * 0.01,
+	         throat + fwd_n * 0.03,
+	         nw0 * nb * 0.62, 0.030, nw1 * nb * 0.72, 0.024,
+	         'slot.fur_belly', bone='neck_01')
 
 	# 어깨뼈 — 걸을 때 등 위로 오르내리는 그 봉우리. 생략하면 몸통이 통나무가 된다
 	for s in ('L', 'R'):
@@ -156,64 +228,92 @@ def body(mb, family):
 # ────────────────────────────────────────────────────────────
 
 HEAD = {
-	# (두개골 폭, 두개골 높이, 두개골 길이, 주둥이 폭, 주둥이 높이, 주둥이 길이)
-	'feline': (0.112, 0.104, 0.130, 0.072, 0.064, 0.070),
-	'canine': (0.098, 0.096, 0.126, 0.062, 0.058, 0.130),   # 주둥이가 길다
-	'cervid': (0.082, 0.090, 0.124, 0.052, 0.058, 0.136),   # 가늘고 길다
+	# (두개골 폭, 높이, 길이, 주둥이 폭, 높이, 길이) — 전부 **전체 치수**, 어깨높이 1.0 기준
+	#
+	# 길이가 높이보다 커야 한다. 반대면 옆에서 봤을 때 머리가 세워 놓은 판처럼 읽힌다.
+	# 고양이과는 주둥이가 짧아 얼굴이 납작하고, 개과·사슴과는 길어 앞으로 뻗는다.
+	'feline': (0.164, 0.150, 0.158, 0.114, 0.100, 0.088),
+	'canine': (0.142, 0.146, 0.166, 0.095, 0.090, 0.162),
+	'cervid': (0.124, 0.134, 0.158, 0.082, 0.088, 0.164),
 }
 
 EARS = {
-	'feline': {'w': 0.052, 'h': 0.072, 'x': 0.062, 'back': 0.030, 'up': 0.070},
-	'canine': {'w': 0.046, 'h': 0.090, 'x': 0.054, 'back': 0.018, 'up': 0.078},
-	'cervid': {'w': 0.070, 'h': 0.100, 'x': 0.062, 'back': 0.010, 'up': 0.054},
+	# w/h 는 귀 한 장의 밑변과 높이, x 는 머리 중심에서 옆으로, up/back 은 두개골 기준
+	'feline': {'w': 0.072, 'h': 0.080, 'x': 0.052, 'back': 0.18, 'up': 0.52},
+	'canine': {'w': 0.060, 'h': 0.098, 'x': 0.046, 'back': 0.14, 'up': 0.54},
+	'cervid': {'w': 0.084, 'h': 0.112, 'x': 0.050, 'back': 0.10, 'up': 0.46},
 }
 
 
 def head(mb, family, predator=True):
-	w, h, l, mw, mh, ml = HEAD[family]
+	"""두개골과 주둥이를 **겹쳐 이어** 하나의 덩어리로 만든다.
+
+	전에는 둘을 떨어뜨려 놓아 주둥이가 얼굴에 붙인 판처럼 보였다.
+	두개골 안에서 주둥이를 시작하고 사이의 단을 콧등으로 덮으면 이어져 읽힌다.
+	"""
+	cw, ch, cl, mw, mh, ml = HEAD[family]
+
 	hd = P(family, 'head')
 	end = P(family, 'head_end')
 
 	fwd = (end - hd).normalized()
-	skull_c = hd + fwd * (l * 0.42)
+	up = _up_of(fwd)
 
-	mb.block((skull_c.x, skull_c.y, skull_c.z), (2 * w, 2 * h, l),
-	         'slot.fur_main', taper=0.88, rot=(math.pi * 0.5, 0.0, 0.0), bone='head')
+	# 두개골 — 목에서 이어받아 앞으로 가며 조금 좁아진다
+	_segment(mb, hd - fwd * 0.016, hd + fwd * cl,
+	         cw, ch, cw * 0.84, ch * 0.78, 'slot.fur_main', 'head')
 
-	# 주둥이
-	muzzle_c = hd + fwd * (l * 0.60 + ml * 0.45) + Vector((0.0, 0.0, -h * 0.34))
+	# 주둥이 — 두개골 안에서 시작해 앞으로. 살짝 아래로 처진다
+	m0 = hd + fwd * (cl * 0.58) - up * (ch * 0.16)
+	m1 = m0 + fwd * ml
 
-	mb.block((muzzle_c.x, muzzle_c.y, muzzle_c.z), (2 * mw, 2 * mh, ml),
-	         'slot.fur_main', taper=0.76, rot=(math.pi * 0.5, 0.0, 0.0), bone='head')
+	_segment(mb, m0, m1, mw, mh, mw * 0.82, mh * 0.74, 'slot.fur_main', 'head')
+
+	# 콧등 — 두개골과 주둥이 사이에 생기는 단을 덮는다
+	_segment(mb, hd + fwd * (cl * 0.42) + up * (ch * 0.16),
+	         m1 - fwd * (ml * 0.12) + up * (mh * 0.28),
+	         cw * 0.60, 0.030, mw * 0.78, 0.024, 'slot.fur_main', 'head')
 
 	# 코
-	nose = hd + fwd * (l * 0.60 + ml * 0.94) + Vector((0.0, 0.0, -h * 0.28))
+	_segment(mb, m1 - fwd * 0.026, m1 + fwd * 0.006,
+	         mw * 0.78, mh * 0.62, mw * 0.64, mh * 0.52, 'fix.nose', 'head')
 
-	mb.block((nose.x, nose.y, nose.z), (mw * 0.90, 0.024, mh * 0.80),
-	         'fix.nose', taper=0.82, bone='head')
-
-	# 눈 — 포식자는 앞을 보고(양안시), 초식동물은 옆을 본다(시야각)
+	# 눈 — 포식자는 앞을 보고(양안시), 초식동물은 옆을 본다(넓은 시야)
 	eye_mat = 'emit.eye_glow' if predator else 'slot.eye'
-	ex = w * (0.66 if predator else 0.96)
-	ey = l * (0.30 if predator else 0.10)
+	ex = cw * (0.36 if predator else 0.47)
+	ey = cl * (0.54 if predator else 0.40)
+	ez = ch * (0.16 if predator else 0.22)
 
 	for sx in (1.0, -1.0):
-		p = skull_c + fwd * ey + Vector((sx * ex, 0.0, h * 0.26))
+		p = hd + fwd * ey + up * ez + Vector((sx * ex, 0.0, 0.0))
 
-		mb.block((p.x, p.y, p.z), (0.030, 0.026, 0.024), eye_mat, bone='head')
+		mb.block((p.x, p.y, p.z), (0.030, 0.028, 0.026), eye_mat, bone='head')
 
-	# 턱
+		# 눈두덩 — 없으면 눈이 머리에 박아 넣은 구슬로 보인다
+		b = hd + fwd * (ey - cl * 0.05) + up * (ez + 0.024) + Vector((sx * ex, 0.0, 0.0))
+
+		mb.block((b.x, b.y, b.z), (0.046, 0.042, 0.016), 'slot.fur_main',
+		         taper=0.80, bone='head')
+
+	# 턱 — 주둥이 아래에 붙여 입이 닫힌 모양을 만든다.
+	#
+	# **주둥이 끝보다 앞으로 나가면 안 된다.** jaw 본은 입을 벌리는 회전축이라
+	# 주둥이보다 길게 잡혀 있는데, 뼈 길이를 그대로 살로 쓰면 턱이 코앞으로
+	# 튀어나와 입이 벌어진 것처럼 보인다. 그래서 주둥이 끝에 맞춰 자른다.
 	jaw = P(family, 'jaw')
 	jaw_end = P(family, 'jaw_end')
-	jc = (jaw + jaw_end) * 0.5
+	jaw_dir = (jaw_end - jaw).normalized()
 
-	mb.block((jc.x, jc.y, jc.z), (2 * mw * 0.86, 0.034, (jaw_end - jaw).length),
-	         'slot.fur_belly', taper=0.80, rot=(math.pi * 0.5, 0.0, 0.0), bone='jaw')
+	reach = min((jaw_end - jaw).length, max(0.03, (m1 - jaw).dot(jaw_dir) - 0.008))
+
+	_segment(mb, jaw, jaw + jaw_dir * reach,
+	         mw * 0.92, mh * 0.48, mw * 0.74, mh * 0.36,
+	         'slot.fur_belly', 'jaw')
 
 	if predator:
 		# 송곳니 — 위험한 짐승이라는 신호. 작아도 실루엣에서 읽힌다
 		for sx in (1.0, -1.0):
-			p = hd + fwd * (l * 0.60 + ml * 0.80) + Vector((sx * mw * 0.56, 0.0, -h * 0.60))
+			p = m1 - fwd * (ml * 0.14) - up * (mh * 0.46) + Vector((sx * mw * 0.30, 0.0, 0.0))
 
 			mb.block((p.x, p.y, p.z), (0.014, 0.014, 0.030), 'fix.tooth',
 			         taper=0.30, bone='head')
@@ -225,14 +325,21 @@ def ears(mb, family):
 	end = P(family, 'head_end')
 	fwd = (end - hd).normalized()
 
-	base = hd + fwd * (HEAD[family][2] * 0.18)
+	up = _up_of(fwd)
+	cw, ch, cl = HEAD[family][0:3]
+
+	# back/up 은 두개골 치수에 대한 비율이다. 머리 크기를 바꿔도 귀가 따라온다.
+	base = hd + fwd * (cl * e['back']) + up * (ch * e['up'])
 
 	for sx in (1.0, -1.0):
-		p = base + Vector((sx * e['x'], e['back'], e['up']))
+		p = base + Vector((sx * e['x'], 0.0, e['h'] * 0.5))
 
-		mb.wedge((p.x, p.y, p.z), (e['w'], 0.022, e['h']), 'slot.fur_main',
+		mb.wedge((p.x, p.y, p.z), (e['w'], 0.024, e['h']), 'slot.fur_main',
 		         axis='y', bone='head')
-		mb.wedge((p.x, p.y - 0.012, p.z), (e['w'] * 0.66, 0.012, e['h'] * 0.76),
+
+		# 귓속 — 한 겹 더 넣어야 귀가 종잇장으로 안 보인다
+		mb.wedge((p.x, p.y - 0.014, p.z - e['h'] * 0.06),
+		         (e['w'] * 0.62, 0.012, e['h'] * 0.72),
 		         'slot.fur_belly', axis='y', bone='head')
 
 
@@ -345,17 +452,31 @@ def tail(mb, family):
 
 
 def mane(mb, family):
-	"""갈기 — 목덜미를 따라 선 털. 늑대·표범의 위협 표현."""
-	for a_name, b_name, bone in (('chest', 'neck_01', 'chest'),
-	                              ('neck_01', 'neck_02', 'neck_01'),
-	                              ('neck_02', 'head', 'neck_02')):
-		a = P(family, a_name)
-		b = P(family, b_name)
-		c = (a + b) * 0.5
-		d = (b - a).length
+	"""갈기 — 목덜미를 따라 선 털. 늑대·표범의 위협 표현.
 
-		mb.wedge((c.x, c.y, c.z + 0.062), (0.030, d * 0.96, 0.072),
-		         'slot.fur_main', axis='y', bone=bone)
+	목 **위에 얹어야** 한다. 전에는 고정 높이로 띄워 둬서 목이 굵어지자
+	따로 뜬 판처럼 보였다. 이제 목 치수에서 높이를 계산한다.
+	"""
+	nb = rig.BULK[family]['neck']
+	nw0, nh0, nw1, nh1 = NECK[family]
+
+	stations = ('chest', 'neck_01', 'neck_02', 'head')
+	steps = len(stations) - 1
+
+	for i in range(steps):
+		a = P(family, stations[i])
+		b = P(family, stations[i + 1])
+
+		t = (i + 0.5) / steps
+		height = (nh0 + (nh1 - nh0) * t) * nb
+
+		fwd = (b - a).normalized()
+		c = (a + b) * 0.5 + _up_of(fwd) * (height * 0.46)
+
+		crest = 0.080 - 0.018 * i   # 어깨 쪽이 가장 높다
+
+		mb.wedge((c.x, c.y, c.z), (0.034, (b - a).length * 1.04, crest),
+		         'slot.fur_main', axis='y', bone=stations[i])
 
 
 def antler(mb, family):
